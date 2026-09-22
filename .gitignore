@@ -1,5 +1,4 @@
-.worktrees/
-node_modules/
-dist/
-client/dist/
+node_modules
+dist
+client/dist
 .env
