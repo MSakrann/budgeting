@@ -43,7 +43,10 @@ describe("http", () => {
         capitalizationStart: { year: 2026, month: 3 }, capitalizationEnd: { year: 2026, month: 9 },
       }),
     });
+    expect([200, 201]).toContain(po.status);
     const created = await po.json();
+    expect(typeof created.id).toBe("string");
+    expect(created.id.length).toBeGreaterThan(0);
     const rejected = await app.request("/api/invoices", {
       method: "POST",
       headers: { cookie, "content-type": "application/json" },
@@ -53,6 +56,9 @@ describe("http", () => {
       }),
     });
     expect(rejected.status).toBe(400);
+    const body = await rejected.json();
+    expect(body.error).toMatch(/receipt/i);
+    expect(body.error).toMatch(/FAC/i);
   });
 
   it("lets the viewer read the dashboard and rejects edits", async () => {
