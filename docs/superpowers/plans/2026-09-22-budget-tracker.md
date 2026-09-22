@@ -22,7 +22,7 @@
 - Cashed-out percentage = cashed-out EGP / PO EGP. Remaining = PO EGP − cashed-out EGP. Submitted-only invoices do not count as cashed out.
 - Cash-out totals include POs whose budget year is the selected year and whose contract amount is filled in.
 - Capitalization for a year includes every PO whose period overlaps that year, including a different budget year.
-- A PO missing a contract amount or a capitalization month is excluded from capitalization and from committed value, and shown as incomplete.
+- A PO missing a contract amount or a capitalization month is excluded from capitalization and shown as incomplete. Committed value includes every selected-year PO with a filled contract amount, including one whose capitalization months are still blank.
 - An invoice EGP greater than remaining cash-out (computed without that invoice) is saved and flagged. A PO is marked over the contract when the sum of its invoice EGP exceeds its contract EGP.
 - Uncommitted = approved − committed. When committed is greater than approved, show that difference as an overrun.
 - Three accounts: two editors and one viewer. The viewer can open the dashboard and cannot create, update, or delete.
