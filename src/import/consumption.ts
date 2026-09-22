@@ -10,7 +10,8 @@ export type ConsumptionRow = {
 };
 
 export function roundMoney(amount: number): number {
-  return Math.round((amount + Number.EPSILON) * 100) / 100;
+  const sign = Math.sign(amount);
+  return sign * (Math.round((Math.abs(amount) + Number.EPSILON) * 100) / 100);
 }
 
 function invoiceKey(poNumber: string, amount: number, submissionDate: string): string {

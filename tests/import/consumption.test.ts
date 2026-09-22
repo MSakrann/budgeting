@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { importConsumption, type ConsumptionRow } from "../../src/import/consumption.js";
+import { importConsumption, roundMoney, type ConsumptionRow } from "../../src/import/consumption.js";
+
+describe("roundMoney", () => {
+  it.each([
+    [1.005, 1.01],
+    [-1.005, -1.01],
+    [1.004, 1.0],
+    [-1.004, -1.0],
+  ])("rounds %f to %f", (amount, expected) => {
+    expect(roundMoney(amount)).toBe(expected);
+  });
+});
 
 const row = (amount: number, date: string, po = "64298"): ConsumptionRow => ({
   poNumber: po,
