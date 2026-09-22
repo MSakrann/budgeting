@@ -4,6 +4,7 @@ import { importConsumption, roundMoney, type ConsumptionRow } from "../../src/im
 describe("roundMoney", () => {
   it.each([
     [10.075, 10.08],
+    [10.0749999, 10.07],
     [1.005, 1.01],
     [-1.005, -1.01],
     [1.004, 1.0],

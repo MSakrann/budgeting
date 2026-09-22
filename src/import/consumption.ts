@@ -11,12 +11,12 @@ export type ConsumptionRow = {
 
 export function roundMoney(amount: number): number {
   const sign = Math.sign(amount) || 1;
-  const fixed = Math.abs(amount).toFixed(6);
-  const dot = fixed.indexOf(".");
-  const whole = dot === -1 ? fixed : fixed.slice(0, dot);
-  const decimals = dot === -1 ? "000000" : (fixed.slice(dot + 1) + "000000").slice(0, 6);
-  const thirdDigit = Number(decimals[2] ?? "0");
-  let piastres = Number(whole) * 100 + Number(decimals.slice(0, 2));
+  const text = Math.abs(amount).toLocaleString("en-US", { useGrouping: false, maximumFractionDigits: 20 });
+  const dot = text.indexOf(".");
+  const whole = dot === -1 ? text : text.slice(0, dot);
+  const frac = dot === -1 ? "" : text.slice(dot + 1);
+  const thirdDigit = Number(frac[2] ?? "0");
+  let piastres = Number(whole) * 100 + Number((frac[0] ?? "0") + (frac[1] ?? "0"));
   if (thirdDigit >= 5) piastres += 1;
   return sign * (piastres / 100);
 }
