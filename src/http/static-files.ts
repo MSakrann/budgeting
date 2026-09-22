@@ -23,6 +23,14 @@ function safeJoin(root: string, requestPath: string): string | null {
   return candidate;
 }
 
+function acceptsHtml(accept: string | undefined): boolean {
+  if (!accept) return false;
+  return accept.split(",").some((part) => {
+    const type = part.trim().split(";")[0]?.trim().toLowerCase() ?? "";
+    return type === "text/html" || type === "application/xhtml+xml";
+  });
+}
+
 /** Serves `client/dist` (or any root) for production GETs that are not under `/api`. */
 export function createStaticApp(clientDist: string): Hono {
   const app = new Hono();
@@ -30,18 +38,26 @@ export function createStaticApp(clientDist: string): Hono {
     if (!existsSync(clientDist)) {
       return c.text("Client build missing. Run vite build.", 404);
     }
-    let filePath = safeJoin(clientDist, c.req.path);
-    if (!filePath || !existsSync(filePath)) {
-      filePath = join(clientDist, "index.html");
+    const filePath = safeJoin(clientDist, c.req.path);
+    if (filePath && existsSync(filePath)) {
+      const data = await readFile(filePath);
+      return new Response(data, {
+        status: 200,
+        headers: { "content-type": MIME[extname(filePath)] ?? "application/octet-stream" },
+      });
     }
-    if (!existsSync(filePath)) {
-      return c.text("Not found", 404);
+    // SPA fallback only for navigation requests that accept HTML — not missing assets.
+    if (acceptsHtml(c.req.header("accept"))) {
+      const indexPath = join(clientDist, "index.html");
+      if (existsSync(indexPath)) {
+        const data = await readFile(indexPath);
+        return new Response(data, {
+          status: 200,
+          headers: { "content-type": MIME[".html"] },
+        });
+      }
     }
-    const data = await readFile(filePath);
-    return new Response(data, {
-      status: 200,
-      headers: { "content-type": MIME[extname(filePath)] ?? "application/octet-stream" },
-    });
+    return c.text("Not found", 404);
   });
   return app;
 }

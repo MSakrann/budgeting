@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { formatEgp, formatPercent } from "./format.js";
 
 type Role = "editor" | "viewer";
@@ -729,9 +729,12 @@ function ResourcePage({ config }: { config: ResourceConfig }) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [listError, setListError] = useState<string | null>(null);
+  const listRequestId = useRef(0);
 
   async function loadList() {
+    const requestId = ++listRequestId.current;
     const result = await api<ResourceRecord[]>(config.listPath);
+    if (requestId !== listRequestId.current) return;
     if (!result.ok) {
       setListError(result.error);
       setRecords([]);
@@ -746,6 +749,8 @@ function ResourcePage({ config }: { config: ResourceConfig }) {
     setValues(emptyValues(config.fields));
     setError(null);
     setSuccess(null);
+    setListError(null);
+    setRecords([]);
     void loadList();
   }, [config]);
 

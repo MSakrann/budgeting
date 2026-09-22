@@ -45,9 +45,34 @@ describe("static files", () => {
     const html = "<!DOCTYPE html><html><head><title>Data Lake Budget</title></head><body></body></html>";
     writeFileSync(join(root, "index.html"), html);
     const app = createStaticApp(root);
-    const response = await app.request("/");
+    const response = await app.request("/", {
+      headers: { accept: "text/html" },
+    });
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toMatch(/text\/html/);
+    expect(await response.text()).toBe(html);
+  });
+
+  it("returns 404 for missing assets instead of SPA index.html", async () => {
+    const root = mkdtempSync(join(tmpdir(), "budget-static-"));
+    writeFileSync(join(root, "index.html"), "<!DOCTYPE html><html></html>");
+    const app = createStaticApp(root);
+    const response = await app.request("/assets/missing.js", {
+      headers: { accept: "*/*" },
+    });
+    expect(response.status).toBe(404);
+    expect(await response.text()).not.toMatch(/DOCTYPE/i);
+  });
+
+  it("falls back to index.html for HTML navigation to unknown routes", async () => {
+    const root = mkdtempSync(join(tmpdir(), "budget-static-"));
+    const html = "<!DOCTYPE html><html><body>app</body></html>";
+    writeFileSync(join(root, "index.html"), html);
+    const app = createStaticApp(root);
+    const response = await app.request("/invoices", {
+      headers: { accept: "text/html,application/xhtml+xml" },
+    });
+    expect(response.status).toBe(200);
     expect(await response.text()).toBe(html);
   });
 });
