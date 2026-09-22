@@ -84,4 +84,16 @@ describe("http", () => {
     });
     expect(again.status).toBe(403);
   });
+
+  it("lets the viewer delete the session to log out", async () => {
+    const app = await editorApp();
+    const cookie = await login(app, "cto@orange.com");
+    const logout = await app.request("/api/session", {
+      method: "DELETE",
+      headers: { cookie },
+    });
+    expect(logout.status).toBe(204);
+    const setCookie = logout.headers.get("set-cookie") ?? "";
+    expect(setCookie.toLowerCase()).toMatch(/budget_session=/);
+  });
 });

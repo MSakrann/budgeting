@@ -45,6 +45,7 @@ export function createApp(store: Store, sessionSecret: string): Hono<AppEnv> {
     if (user.role === "viewer") {
       const allowed =
         (c.req.method === "GET" && path === "/api/session") ||
+        (c.req.method === "DELETE" && path === "/api/session") ||
         (c.req.method === "GET" && path === "/api/dashboard");
       if (!allowed) {
         return c.json({ error: "Forbidden" }, 403);
