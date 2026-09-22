@@ -12,6 +12,7 @@ import type {
   Ledger,
   PurchaseOrder,
   PurchaseRequest,
+  YearMonth,
   YearRates,
 } from "../domain/types.js";
 import type { Store, User } from "./types.js";
@@ -61,6 +62,42 @@ function inUse(): never {
   throw new Error("in use");
 }
 
+function cloneYearMonth(value: YearMonth | null): YearMonth | null {
+  return value ? { year: value.year, month: value.month } : null;
+}
+
+function cloneUser(user: User): User {
+  return { ...user };
+}
+
+function cloneRates(rates: YearRates): YearRates {
+  return { ...rates };
+}
+
+function cloneBudgetLine(row: BudgetLine): BudgetLine {
+  return { ...row };
+}
+
+function clonePurchaseRequest(row: PurchaseRequest): PurchaseRequest {
+  return { ...row };
+}
+
+function cloneIec(row: Iec): Iec {
+  return { ...row };
+}
+
+function clonePurchaseOrder(row: PurchaseOrder): PurchaseOrder {
+  return {
+    ...row,
+    capitalizationStart: cloneYearMonth(row.capitalizationStart),
+    capitalizationEnd: cloneYearMonth(row.capitalizationEnd),
+  };
+}
+
+function cloneInvoice(row: Invoice): Invoice {
+  return { ...row };
+}
+
 export function createMemoryStore(): Store {
   const users: User[] = [];
   const rates: YearRates[] = [];
@@ -93,32 +130,34 @@ export function createMemoryStore(): Store {
 
   return {
     async findUserByEmail(email) {
-      return users.find((u) => u.email === email) ?? null;
+      const user = users.find((u) => u.email === email);
+      return user ? cloneUser(user) : null;
     },
 
     async ensureUser(input) {
       const existing = users.find((u) => u.email === input.email);
-      if (existing) return existing;
+      if (existing) return cloneUser(existing);
       const user: User = { id: crypto.randomUUID(), ...input };
       users.push(user);
-      return user;
+      return cloneUser(user);
     },
 
     async upsertRates(input) {
-      const index = rates.findIndex((r) => r.year === input.year);
-      if (index >= 0) rates[index] = input;
-      else rates.push(input);
-      return input;
+      const stored = cloneRates(input);
+      const index = rates.findIndex((r) => r.year === stored.year);
+      if (index >= 0) rates[index] = stored;
+      else rates.push(stored);
+      return cloneRates(stored);
     },
 
     async loadLedger(): Promise<Ledger> {
       return {
-        rates: [...rates],
-        budgetLines: [...budgetLines],
-        purchaseRequests: [...purchaseRequests],
-        iecs: [...iecs],
-        purchaseOrders: [...purchaseOrders],
-        invoices: [...invoices],
+        rates: rates.map(cloneRates),
+        budgetLines: budgetLines.map(cloneBudgetLine),
+        purchaseRequests: purchaseRequests.map(clonePurchaseRequest),
+        iecs: iecs.map(cloneIec),
+        purchaseOrders: purchaseOrders.map(clonePurchaseOrder),
+        invoices: invoices.map(cloneInvoice),
       };
     },
 
@@ -132,18 +171,18 @@ export function createMemoryStore(): Store {
 
     async createBudgetLine(input) {
       assertBudgetLine(input, ratesForYear(rates, input.year));
-      const row: BudgetLine = { id: crypto.randomUUID(), ...input };
+      const row = cloneBudgetLine({ id: crypto.randomUUID(), ...input });
       budgetLines.push(row);
-      return row;
+      return cloneBudgetLine(row);
     },
 
     async updateBudgetLine(id, input) {
       assertBudgetLine(input, ratesForYear(rates, input.year));
       const index = budgetLines.findIndex((r) => r.id === id);
       if (index < 0) throw new Error("not found");
-      const row: BudgetLine = { id, ...input };
+      const row = cloneBudgetLine({ id, ...input });
       budgetLines[index] = row;
-      return row;
+      return cloneBudgetLine(row);
     },
 
     async deleteBudgetLine(id) {
@@ -158,9 +197,9 @@ export function createMemoryStore(): Store {
     async createPurchaseRequest(input) {
       assertPurchaseRequest(input, ratesForYear(rates, input.year));
       requireBudgetLine(input.budgetLineId);
-      const row: PurchaseRequest = { id: crypto.randomUUID(), ...input };
+      const row = clonePurchaseRequest({ id: crypto.randomUUID(), ...input });
       purchaseRequests.push(row);
-      return row;
+      return clonePurchaseRequest(row);
     },
 
     async updatePurchaseRequest(id, input) {
@@ -168,9 +207,9 @@ export function createMemoryStore(): Store {
       requireBudgetLine(input.budgetLineId);
       const index = purchaseRequests.findIndex((r) => r.id === id);
       if (index < 0) throw new Error("not found");
-      const row: PurchaseRequest = { id, ...input };
+      const row = clonePurchaseRequest({ id, ...input });
       purchaseRequests[index] = row;
-      return row;
+      return clonePurchaseRequest(row);
     },
 
     async deletePurchaseRequest(id) {
@@ -182,9 +221,9 @@ export function createMemoryStore(): Store {
     async createIec(input) {
       assertIec(input, ratesForYear(rates, input.year));
       requirePurchaseRequest(input.purchaseRequestId);
-      const row: Iec = { id: crypto.randomUUID(), ...input };
+      const row = cloneIec({ id: crypto.randomUUID(), ...input });
       iecs.push(row);
-      return row;
+      return cloneIec(row);
     },
 
     async updateIec(id, input) {
@@ -192,9 +231,9 @@ export function createMemoryStore(): Store {
       requirePurchaseRequest(input.purchaseRequestId);
       const index = iecs.findIndex((r) => r.id === id);
       if (index < 0) throw new Error("not found");
-      const row: Iec = { id, ...input };
+      const row = cloneIec({ id, ...input });
       iecs[index] = row;
-      return row;
+      return cloneIec(row);
     },
 
     async deleteIec(id) {
@@ -208,9 +247,9 @@ export function createMemoryStore(): Store {
       if (purchaseOrders.some((r) => r.number === input.number)) {
         throw new Error("Purchase order number already exists");
       }
-      const row: PurchaseOrder = { id: crypto.randomUUID(), ...input };
+      const row = clonePurchaseOrder({ id: crypto.randomUUID(), ...input });
       purchaseOrders.push(row);
-      return row;
+      return clonePurchaseOrder(row);
     },
 
     async updatePurchaseOrder(id, input) {
@@ -221,9 +260,9 @@ export function createMemoryStore(): Store {
       }
       const index = purchaseOrders.findIndex((r) => r.id === id);
       if (index < 0) throw new Error("not found");
-      const row: PurchaseOrder = { id, ...input };
+      const row = clonePurchaseOrder({ id, ...input });
       purchaseOrders[index] = row;
-      return row;
+      return clonePurchaseOrder(row);
     },
 
     async deletePurchaseOrder(id) {
@@ -235,9 +274,9 @@ export function createMemoryStore(): Store {
     async createInvoice(input) {
       const po = requirePurchaseOrder(input.purchaseOrderId);
       assertInvoice(input, ratesForYear(rates, po.budgetYear));
-      const row: Invoice = { id: crypto.randomUUID(), ...input };
+      const row = cloneInvoice({ id: crypto.randomUUID(), ...input });
       invoices.push(row);
-      return row;
+      return cloneInvoice(row);
     },
 
     async updateInvoice(id, input) {
@@ -245,9 +284,9 @@ export function createMemoryStore(): Store {
       assertInvoice(input, ratesForYear(rates, po.budgetYear));
       const index = invoices.findIndex((r) => r.id === id);
       if (index < 0) throw new Error("not found");
-      const row: Invoice = { id, ...input };
+      const row = cloneInvoice({ id, ...input });
       invoices[index] = row;
-      return row;
+      return cloneInvoice(row);
     },
 
     async deleteInvoice(id) {

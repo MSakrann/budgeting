@@ -29,7 +29,7 @@ export const purchaseRequests = pgTable("purchase_requests", {
   year: integer("year").notNull(),
   amount: doublePrecision("amount").notNull(),
   currency: text("currency").notNull(),
-  budgetLineId: text("budget_line_id"),
+  budgetLineId: text("budget_line_id").references(() => budgetLines.id),
   status: text("status").notNull(),
 });
 
@@ -44,7 +44,7 @@ export const iecs = pgTable("iecs", {
   budgetAmount: doublePrecision("budget_amount").notNull(),
   requestedAmount: doublePrecision("requested_amount").notNull(),
   note: text("note"),
-  purchaseRequestId: text("purchase_request_id"),
+  purchaseRequestId: text("purchase_request_id").references(() => purchaseRequests.id),
   status: text("status").notNull(),
 });
 
@@ -57,7 +57,7 @@ export const purchaseOrders = pgTable("purchase_orders", {
   contractAmount: doublePrecision("contract_amount"),
   currency: text("currency"),
   kind: text("kind").notNull(),
-  budgetLineId: text("budget_line_id"),
+  budgetLineId: text("budget_line_id").references(() => budgetLines.id),
   capStartYear: integer("cap_start_year"),
   capStartMonth: integer("cap_start_month"),
   capEndYear: integer("cap_end_year"),
@@ -66,7 +66,9 @@ export const purchaseOrders = pgTable("purchase_orders", {
 
 export const invoices = pgTable("invoices", {
   id: text("id").primaryKey(),
-  purchaseOrderId: text("purchase_order_id").notNull(),
+  purchaseOrderId: text("purchase_order_id")
+    .notNull()
+    .references(() => purchaseOrders.id),
   amount: doublePrecision("amount").notNull(),
   currency: text("currency").notNull(),
   submissionDate: text("submission_date").notNull(),
@@ -117,7 +119,7 @@ CREATE TABLE IF NOT EXISTS purchase_requests (
   year integer NOT NULL,
   amount double precision NOT NULL,
   currency text NOT NULL,
-  budget_line_id text,
+  budget_line_id text REFERENCES budget_lines(id),
   status text NOT NULL
 );
 CREATE TABLE IF NOT EXISTS iecs (
@@ -131,7 +133,7 @@ CREATE TABLE IF NOT EXISTS iecs (
   budget_amount double precision NOT NULL,
   requested_amount double precision NOT NULL,
   note text,
-  purchase_request_id text,
+  purchase_request_id text REFERENCES purchase_requests(id),
   status text NOT NULL
 );
 CREATE TABLE IF NOT EXISTS purchase_orders (
@@ -143,7 +145,7 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
   contract_amount double precision,
   currency text,
   kind text NOT NULL,
-  budget_line_id text,
+  budget_line_id text REFERENCES budget_lines(id),
   cap_start_year integer,
   cap_start_month integer,
   cap_end_year integer,
@@ -151,7 +153,7 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
 );
 CREATE TABLE IF NOT EXISTS invoices (
   id text PRIMARY KEY,
-  purchase_order_id text NOT NULL,
+  purchase_order_id text NOT NULL REFERENCES purchase_orders(id),
   amount double precision NOT NULL,
   currency text NOT NULL,
   submission_date text NOT NULL,
