@@ -6,6 +6,7 @@ import {
 } from "../domain/validate.js";
 import type {
   BudgetLine,
+  Currency,
   Iec,
   Invoice,
   Ledger,
@@ -23,19 +24,37 @@ function ratesForYear(rates: YearRates[], year: number): YearRates | undefined {
   return rates.find((r) => r.year === year);
 }
 
-function submissionYear(date: string): number {
-  return Number(date.slice(0, 4));
+function assertMoney(
+  amount: number | null,
+  currency: Currency | null,
+  rates: YearRates | undefined,
+): void {
+  assertOk(validateAmount(amount));
+  if (currency !== null) assertOk(validateCurrency(currency, rates));
 }
 
-function assertInvoice(input: Omit<Invoice, "id">, rates: YearRates[]): void {
-  assertOk(validateInvoiceDocuments(input.receiptNumber, input.facReference));
-  assertOk(validateAmount(input.amount));
-  assertOk(validateCurrency(input.currency, ratesForYear(rates, submissionYear(input.submissionDate))));
+function assertBudgetLine(input: Omit<BudgetLine, "id">, rates: YearRates | undefined): void {
+  assertMoney(input.amount, input.currency, rates);
 }
 
-function assertPurchaseOrder(input: Omit<PurchaseOrder, "id">): void {
+function assertPurchaseRequest(input: Omit<PurchaseRequest, "id">, rates: YearRates | undefined): void {
+  assertMoney(input.amount, input.currency, rates);
+}
+
+function assertIec(input: Omit<Iec, "id">, rates: YearRates | undefined): void {
+  assertOk(validateAmount(input.budgetAmount));
+  assertOk(validateAmount(input.requestedAmount));
+  assertOk(validateCurrency(input.currency, rates));
+}
+
+function assertPurchaseOrder(input: Omit<PurchaseOrder, "id">, rates: YearRates | undefined): void {
   assertOk(validatePeriod(input.capitalizationStart, input.capitalizationEnd));
-  assertOk(validateAmount(input.contractAmount));
+  assertMoney(input.contractAmount, input.currency, rates);
+}
+
+function assertInvoice(input: Omit<Invoice, "id">, rates: YearRates | undefined): void {
+  assertOk(validateInvoiceDocuments(input.receiptNumber, input.facReference));
+  assertMoney(input.amount, input.currency, rates);
 }
 
 function inUse(): never {
@@ -51,6 +70,26 @@ export function createMemoryStore(): Store {
   const purchaseOrders: PurchaseOrder[] = [];
   const invoices: Invoice[] = [];
   const imports = new Set<string>();
+
+  function requireBudgetLine(id: string | null): void {
+    if (id === null) return;
+    if (!budgetLines.some((r) => r.id === id)) {
+      throw new Error("Budget line reference does not exist");
+    }
+  }
+
+  function requirePurchaseRequest(id: string | null): void {
+    if (id === null) return;
+    if (!purchaseRequests.some((r) => r.id === id)) {
+      throw new Error("Purchase request reference does not exist");
+    }
+  }
+
+  function requirePurchaseOrder(id: string): PurchaseOrder {
+    const po = purchaseOrders.find((r) => r.id === id);
+    if (!po) throw new Error("Purchase order reference does not exist");
+    return po;
+  }
 
   return {
     async findUserByEmail(email) {
@@ -92,12 +131,14 @@ export function createMemoryStore(): Store {
     },
 
     async createBudgetLine(input) {
+      assertBudgetLine(input, ratesForYear(rates, input.year));
       const row: BudgetLine = { id: crypto.randomUUID(), ...input };
       budgetLines.push(row);
       return row;
     },
 
     async updateBudgetLine(id, input) {
+      assertBudgetLine(input, ratesForYear(rates, input.year));
       const index = budgetLines.findIndex((r) => r.id === id);
       if (index < 0) throw new Error("not found");
       const row: BudgetLine = { id, ...input };
@@ -115,12 +156,16 @@ export function createMemoryStore(): Store {
     },
 
     async createPurchaseRequest(input) {
+      assertPurchaseRequest(input, ratesForYear(rates, input.year));
+      requireBudgetLine(input.budgetLineId);
       const row: PurchaseRequest = { id: crypto.randomUUID(), ...input };
       purchaseRequests.push(row);
       return row;
     },
 
     async updatePurchaseRequest(id, input) {
+      assertPurchaseRequest(input, ratesForYear(rates, input.year));
+      requireBudgetLine(input.budgetLineId);
       const index = purchaseRequests.findIndex((r) => r.id === id);
       if (index < 0) throw new Error("not found");
       const row: PurchaseRequest = { id, ...input };
@@ -135,12 +180,16 @@ export function createMemoryStore(): Store {
     },
 
     async createIec(input) {
+      assertIec(input, ratesForYear(rates, input.year));
+      requirePurchaseRequest(input.purchaseRequestId);
       const row: Iec = { id: crypto.randomUUID(), ...input };
       iecs.push(row);
       return row;
     },
 
     async updateIec(id, input) {
+      assertIec(input, ratesForYear(rates, input.year));
+      requirePurchaseRequest(input.purchaseRequestId);
       const index = iecs.findIndex((r) => r.id === id);
       if (index < 0) throw new Error("not found");
       const row: Iec = { id, ...input };
@@ -154,7 +203,8 @@ export function createMemoryStore(): Store {
     },
 
     async createPurchaseOrder(input) {
-      assertPurchaseOrder(input);
+      assertPurchaseOrder(input, ratesForYear(rates, input.budgetYear));
+      requireBudgetLine(input.budgetLineId);
       if (purchaseOrders.some((r) => r.number === input.number)) {
         throw new Error("Purchase order number already exists");
       }
@@ -164,7 +214,8 @@ export function createMemoryStore(): Store {
     },
 
     async updatePurchaseOrder(id, input) {
-      assertPurchaseOrder(input);
+      assertPurchaseOrder(input, ratesForYear(rates, input.budgetYear));
+      requireBudgetLine(input.budgetLineId);
       if (purchaseOrders.some((r) => r.number === input.number && r.id !== id)) {
         throw new Error("Purchase order number already exists");
       }
@@ -182,14 +233,16 @@ export function createMemoryStore(): Store {
     },
 
     async createInvoice(input) {
-      assertInvoice(input, rates);
+      const po = requirePurchaseOrder(input.purchaseOrderId);
+      assertInvoice(input, ratesForYear(rates, po.budgetYear));
       const row: Invoice = { id: crypto.randomUUID(), ...input };
       invoices.push(row);
       return row;
     },
 
     async updateInvoice(id, input) {
-      assertInvoice(input, rates);
+      const po = requirePurchaseOrder(input.purchaseOrderId);
+      assertInvoice(input, ratesForYear(rates, po.budgetYear));
       const index = invoices.findIndex((r) => r.id === id);
       if (index < 0) throw new Error("not found");
       const row: Invoice = { id, ...input };
