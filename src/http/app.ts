@@ -28,6 +28,32 @@ export function createApp(store: Store, sessionSecret: string): Hono<AppEnv> {
     return store.findUserByEmail(session.email);
   }
 
+  app.use("/api/*", async (c, next) => {
+    const path = new URL(c.req.url).pathname;
+    const user = await userFromCookie(c);
+
+    if (c.req.method === "POST" && path === "/api/session") {
+      if (user?.role === "viewer") {
+        return c.json({ error: "Forbidden" }, 403);
+      }
+      return next();
+    }
+
+    if (!user) {
+      return c.json({ error: "Unauthorized" }, 401);
+    }
+    if (user.role === "viewer") {
+      const allowed =
+        (c.req.method === "GET" && path === "/api/session") ||
+        (c.req.method === "GET" && path === "/api/dashboard");
+      if (!allowed) {
+        return c.json({ error: "Forbidden" }, 403);
+      }
+    }
+    c.set("user", user);
+    await next();
+  });
+
   app.post("/api/session", async (c) => {
     const body = await c.req.json<{ email?: string; password?: string }>();
     if (!body.email || !body.password) {
@@ -43,27 +69,6 @@ export function createApp(store: Store, sessionSecret: string): Hono<AppEnv> {
     );
     setCookie(c, COOKIE_NAME, token, COOKIE_OPTIONS);
     return c.json({ email: user.email, role: user.role, name: user.name });
-  });
-
-  app.use("/api/*", async (c, next) => {
-    const path = new URL(c.req.url).pathname;
-    if (c.req.method === "POST" && path === "/api/session") {
-      return next();
-    }
-    const user = await userFromCookie(c);
-    if (!user) {
-      return c.json({ error: "Unauthorized" }, 401);
-    }
-    if (user.role === "viewer") {
-      const allowed =
-        (c.req.method === "GET" && path === "/api/session") ||
-        (c.req.method === "GET" && path === "/api/dashboard");
-      if (!allowed) {
-        return c.json({ error: "Forbidden" }, 403);
-      }
-    }
-    c.set("user", user);
-    await next();
   });
 
   app.get("/api/session", (c) => {

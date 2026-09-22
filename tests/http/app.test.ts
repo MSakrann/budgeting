@@ -73,4 +73,15 @@ describe("http", () => {
     });
     expect(edit.status).toBe(403);
   });
+
+  it("rejects a second login POST when the viewer already has a session cookie", async () => {
+    const app = await editorApp();
+    const cookie = await login(app, "cto@orange.com");
+    const again = await app.request("/api/session", {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ email: "cto@orange.com", password: "secret" }),
+    });
+    expect(again.status).toBe(403);
+  });
 });
