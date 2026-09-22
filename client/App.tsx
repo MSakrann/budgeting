@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type Dispatch, type FormEvent, type SetStateAction } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { formatEgp, formatPercent } from "./format.js";
 
 type Role = "editor" | "viewer";
@@ -33,6 +33,7 @@ type DashboardPo = {
 
 type DashboardData = {
   year: number;
+  years: number[];
   submittedInvoicesEgp: number;
   inProgressIecs: { count: number; egp: number };
   inProgressPrs: { count: number; egp: number };
@@ -69,24 +70,29 @@ type FieldConfig = {
   optional?: boolean;
 };
 
+type ResourceRecord = Record<string, unknown>;
+
+type ResourceConfig = {
+  title: string;
+  listPath: string;
+  createPath?: string;
+  updatePath: (values: Record<string, string>, editingId: string | null) => string;
+  fields: FieldConfig[];
+  transform: (values: Record<string, string>) => unknown;
+  toFormValues: (record: ResourceRecord) => Record<string, string>;
+  rowLabel: (record: ResourceRecord) => string;
+  recordKey: (record: ResourceRecord) => string;
+};
+
 const STATUSES = ["Draft", "In progress", "Approved", "Rejected", "Closed"];
 const CURRENCIES = ["EGP", "USD", "EUR"];
 const KINDS = ["capex", "opex"];
 
-const RESOURCE_CONFIG: Record<
-  Exclude<Page, "dashboard">,
-  {
-    title: string;
-    method: "POST" | "PUT";
-    path: (values: Record<string, string>) => string;
-    fields: FieldConfig[];
-    transform?: (values: Record<string, string>) => unknown;
-  }
-> = {
+const RESOURCE_CONFIG: Record<Exclude<Page, "dashboard">, ResourceConfig> = {
   rates: {
     title: "Rates",
-    method: "PUT",
-    path: (values) => `/api/rates/${values.year}`,
+    listPath: "/api/rates",
+    updatePath: (values) => `/api/rates/${values.year}`,
     fields: [
       { name: "year", label: "Year", type: "number" },
       { name: "usdToEgp", label: "USD to EGP", type: "number" },
@@ -96,11 +102,20 @@ const RESOURCE_CONFIG: Record<
       usdToEgp: Number(values.usdToEgp),
       eurToEgp: Number(values.eurToEgp),
     }),
+    toFormValues: (record) => ({
+      year: String(record.year ?? ""),
+      usdToEgp: String(record.usdToEgp ?? ""),
+      eurToEgp: String(record.eurToEgp ?? ""),
+    }),
+    rowLabel: (record) =>
+      `${record.year}: USD ${record.usdToEgp} / EUR ${record.eurToEgp}`,
+    recordKey: (record) => String(record.year),
   },
   "budget-lines": {
     title: "Budget lines",
-    method: "POST",
-    path: () => "/api/budget-lines",
+    listPath: "/api/budget-lines",
+    createPath: "/api/budget-lines",
+    updatePath: (_values, editingId) => `/api/budget-lines/${editingId}`,
     fields: [
       { name: "year", label: "Year", type: "number" },
       { name: "projectTitle", label: "Project title", type: "text" },
@@ -115,11 +130,21 @@ const RESOURCE_CONFIG: Record<
       currency: values.currency,
       amount: Number(values.amount),
     }),
+    toFormValues: (record) => ({
+      year: String(record.year ?? ""),
+      projectTitle: String(record.projectTitle ?? ""),
+      kind: String(record.kind ?? "capex"),
+      currency: String(record.currency ?? "EGP"),
+      amount: String(record.amount ?? ""),
+    }),
+    rowLabel: (record) => `${record.year} · ${record.projectTitle} · ${record.amount} ${record.currency}`,
+    recordKey: (record) => String(record.id),
   },
   prs: {
     title: "Purchase requests",
-    method: "POST",
-    path: () => "/api/purchase-requests",
+    listPath: "/api/purchase-requests",
+    createPath: "/api/purchase-requests",
+    updatePath: (_values, editingId) => `/api/purchase-requests/${editingId}`,
     fields: [
       { name: "title", label: "Title", type: "text" },
       { name: "year", label: "Year", type: "number" },
@@ -136,11 +161,22 @@ const RESOURCE_CONFIG: Record<
       budgetLineId: blankToNull(values.budgetLineId),
       status: values.status,
     }),
+    toFormValues: (record) => ({
+      title: String(record.title ?? ""),
+      year: String(record.year ?? ""),
+      amount: String(record.amount ?? ""),
+      currency: String(record.currency ?? "EGP"),
+      budgetLineId: nullableString(record.budgetLineId),
+      status: String(record.status ?? "Draft"),
+    }),
+    rowLabel: (record) => `${record.year} · ${record.title} · ${record.status}`,
+    recordKey: (record) => String(record.id),
   },
   iecs: {
     title: "IECs",
-    method: "POST",
-    path: () => "/api/iecs",
+    listPath: "/api/iecs",
+    createPath: "/api/iecs",
+    updatePath: (_values, editingId) => `/api/iecs/${editingId}`,
     fields: [
       { name: "title", label: "Title", type: "text" },
       { name: "year", label: "Year", type: "number" },
@@ -167,11 +203,27 @@ const RESOURCE_CONFIG: Record<
       purchaseRequestId: blankToNull(values.purchaseRequestId),
       status: values.status,
     }),
+    toFormValues: (record) => ({
+      title: String(record.title ?? ""),
+      year: String(record.year ?? ""),
+      projectCode: String(record.projectCode ?? ""),
+      supplier: nullableString(record.supplier),
+      kind: String(record.kind ?? "capex"),
+      currency: String(record.currency ?? "EGP"),
+      budgetAmount: String(record.budgetAmount ?? ""),
+      requestedAmount: String(record.requestedAmount ?? ""),
+      note: nullableString(record.note),
+      purchaseRequestId: nullableString(record.purchaseRequestId),
+      status: String(record.status ?? "Draft"),
+    }),
+    rowLabel: (record) => `${record.year} · ${record.title} · ${record.status}`,
+    recordKey: (record) => String(record.id),
   },
   pos: {
     title: "Purchase orders",
-    method: "POST",
-    path: () => "/api/purchase-orders",
+    listPath: "/api/purchase-orders",
+    createPath: "/api/purchase-orders",
+    updatePath: (_values, editingId) => `/api/purchase-orders/${editingId}`,
     fields: [
       { name: "number", label: "PO number", type: "text" },
       { name: "budgetYear", label: "Budget year", type: "number" },
@@ -196,11 +248,26 @@ const RESOURCE_CONFIG: Record<
       capitalizationStart: parseMonth(values.capitalizationStart),
       capitalizationEnd: parseMonth(values.capitalizationEnd),
     }),
+    toFormValues: (record) => ({
+      number: String(record.number ?? ""),
+      budgetYear: String(record.budgetYear ?? ""),
+      supplier: String(record.supplier ?? ""),
+      description: String(record.description ?? ""),
+      contractAmount: record.contractAmount == null ? "" : String(record.contractAmount),
+      currency: record.currency == null ? "" : String(record.currency),
+      kind: String(record.kind ?? "capex"),
+      budgetLineId: nullableString(record.budgetLineId),
+      capitalizationStart: formatMonth(record.capitalizationStart),
+      capitalizationEnd: formatMonth(record.capitalizationEnd),
+    }),
+    rowLabel: (record) => `${record.number} · ${record.supplier} · ${record.budgetYear}`,
+    recordKey: (record) => String(record.id),
   },
   invoices: {
     title: "Invoices",
-    method: "POST",
-    path: () => "/api/invoices",
+    listPath: "/api/invoices",
+    createPath: "/api/invoices",
+    updatePath: (_values, editingId) => `/api/invoices/${editingId}`,
     fields: [
       { name: "purchaseOrderId", label: "Purchase order ID", type: "text" },
       { name: "amount", label: "Amount", type: "number" },
@@ -219,11 +286,28 @@ const RESOURCE_CONFIG: Record<
       receiptNumber: blankToNull(values.receiptNumber),
       facReference: blankToNull(values.facReference),
     }),
+    toFormValues: (record) => ({
+      purchaseOrderId: String(record.purchaseOrderId ?? ""),
+      amount: String(record.amount ?? ""),
+      currency: String(record.currency ?? "EGP"),
+      submissionDate: String(record.submissionDate ?? ""),
+      description: nullableString(record.description),
+      receiptNumber: nullableString(record.receiptNumber),
+      facReference: nullableString(record.facReference),
+    }),
+    rowLabel: (record) =>
+      `${record.submissionDate} · ${record.amount} ${record.currency}` +
+      (record.receiptNumber ? " · cashed out" : " · submitted"),
+    recordKey: (record) => String(record.id),
   },
 };
 
 function blankToNull(value: string): string | null {
   return value.trim() === "" ? null : value;
+}
+
+function nullableString(value: unknown): string {
+  return value == null ? "" : String(value);
 }
 
 function parseMonth(value: string): { year: number; month: number } | null {
@@ -234,7 +318,21 @@ function parseMonth(value: string): { year: number; month: number } | null {
   return { year: Number(match[1]), month: Number(match[2]) };
 }
 
-async function api<T>(path: string, init?: RequestInit): Promise<{ ok: true; data: T } | { ok: false; status: number; error: string }> {
+function formatMonth(value: unknown): string {
+  if (!value || typeof value !== "object") return "";
+  const record = value as { year?: unknown; month?: unknown };
+  if (typeof record.year !== "number" || typeof record.month !== "number") return "";
+  return `${record.year}-${String(record.month).padStart(2, "0")}`;
+}
+
+function emptyValues(fields: FieldConfig[]): Record<string, string> {
+  return Object.fromEntries(fields.map((field) => [field.name, ""]));
+}
+
+async function api<T>(
+  path: string,
+  init?: RequestInit,
+): Promise<{ ok: true; data: T } | { ok: false; status: number; error: string }> {
   const response = await fetch(path, {
     credentials: "include",
     headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
@@ -266,7 +364,6 @@ export function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState<Page>("dashboard");
-  const [knownYears, setKnownYears] = useState<number[]>(() => [new Date().getFullYear()]);
 
   useEffect(() => {
     void (async () => {
@@ -338,16 +435,7 @@ export function App() {
         </nav>
       </header>
 
-      {page === "dashboard" ? (
-        <Dashboard knownYears={knownYears} setKnownYears={setKnownYears} />
-      ) : (
-        <ResourcePage
-          config={RESOURCE_CONFIG[page]}
-          onYearSaved={(year) => {
-            setKnownYears((prev) => Array.from(new Set([...prev, year])).sort((a, b) => a - b));
-          }}
-        />
-      )}
+      {page === "dashboard" ? <Dashboard /> : <ResourcePage config={RESOURCE_CONFIG[page]} />}
     </div>
   );
 }
@@ -401,15 +489,10 @@ function Login({ onLoggedIn }: { onLoggedIn: (session: Session) => void }) {
   );
 }
 
-function Dashboard({
-  knownYears,
-  setKnownYears,
-}: {
-  knownYears: number[];
-  setKnownYears: Dispatch<SetStateAction<number[]>>;
-}) {
+function Dashboard() {
   const currentYear = new Date().getFullYear();
   const [year, setYear] = useState(currentYear);
+  const [years, setYears] = useState<number[]>([currentYear]);
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedPoId, setSelectedPoId] = useState<string | null>(null);
@@ -424,19 +507,10 @@ function Dashboard({
         return;
       }
       setData(result.data);
+      setYears(result.data.years);
       setSelectedPoId(null);
-      const discovered = new Set<number>([currentYear, result.data.year]);
-      for (const po of result.data.purchaseOrders) {
-        for (const month of po.months) discovered.add(month.year);
-      }
-      setKnownYears((prev) => Array.from(new Set([...prev, ...discovered])).sort((a, b) => a - b));
     })();
-  }, [year, currentYear, setKnownYears]);
-
-  const years = useMemo(
-    () => Array.from(new Set([...knownYears, currentYear, year])).sort((a, b) => a - b),
-    [knownYears, currentYear, year],
-  );
+  }, [year]);
 
   const selectedPo = data?.purchaseOrders.find((po) => po.id === selectedPoId) ?? null;
 
@@ -643,90 +717,153 @@ function Dashboard({
   );
 }
 
-function ResourcePage({
-  config,
-  onYearSaved,
-}: {
-  config: (typeof RESOURCE_CONFIG)[Exclude<Page, "dashboard">];
-  onYearSaved: (year: number) => void;
-}) {
-  const [values, setValues] = useState<Record<string, string>>(() =>
-    Object.fromEntries(config.fields.map((field) => [field.name, ""])),
-  );
+function ResourcePage({ config }: { config: ResourceConfig }) {
+  const [records, setRecords] = useState<ResourceRecord[]>([]);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [values, setValues] = useState<Record<string, string>>(() => emptyValues(config.fields));
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [listError, setListError] = useState<string | null>(null);
+
+  async function loadList() {
+    const result = await api<ResourceRecord[]>(config.listPath);
+    if (!result.ok) {
+      setListError(result.error);
+      setRecords([]);
+      return;
+    }
+    setListError(null);
+    setRecords(result.data);
+  }
 
   useEffect(() => {
-    setValues(Object.fromEntries(config.fields.map((field) => [field.name, ""])));
+    setEditingId(null);
+    setValues(emptyValues(config.fields));
     setError(null);
     setSuccess(null);
+    void loadList();
   }, [config]);
+
+  function startNew() {
+    setEditingId(null);
+    setValues(emptyValues(config.fields));
+    setError(null);
+    setSuccess(null);
+  }
+
+  function startEdit(record: ResourceRecord) {
+    setEditingId(config.recordKey(record));
+    setValues(config.toFormValues(record));
+    setError(null);
+    setSuccess(null);
+  }
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     setError(null);
     setSuccess(null);
-    const body = config.transform ? config.transform(values) : values;
-    const result = await api(config.path(values), {
-      method: config.method,
+    const body = config.transform(values);
+    const isUpdate = editingId !== null || !config.createPath;
+    const path = isUpdate
+      ? config.updatePath(values, editingId)
+      : (config.createPath as string);
+    const method = isUpdate ? "PUT" : "POST";
+    const result = await api(path, {
+      method,
       body: JSON.stringify(body),
     });
     if (!result.ok) {
       setError(result.error);
       return;
     }
-    setSuccess("Saved.");
-    if (values.year) onYearSaved(Number(values.year));
-    if (values.budgetYear) onYearSaved(Number(values.budgetYear));
+    setSuccess(isUpdate ? "Updated." : "Created.");
+    await loadList();
+    if (!isUpdate && result.data && typeof result.data === "object" && result.data !== null) {
+      startEdit(result.data as ResourceRecord);
+    }
   }
 
   return (
-    <form className="card stack" onSubmit={(event) => void onSubmit(event)}>
-      <h2 className="section-title">{config.title}</h2>
-      <div className="form-grid">
-        {config.fields.map((field) => (
-          <label key={field.name}>
-            {field.label}
-            {field.type === "select" ? (
-              <select
-                value={values[field.name] ?? ""}
-                onChange={(event) =>
-                  setValues((prev) => ({ ...prev, [field.name]: event.target.value }))
-                }
-                required={!field.optional}
-              >
-                {(field.options ?? []).map((option) => (
-                  <option key={option || "blank"} value={option}>
-                    {option === "" ? "—" : option}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <input
-                type={field.type === "number" ? "number" : "text"}
-                step={field.type === "number" ? "any" : undefined}
-                value={values[field.name] ?? ""}
-                onChange={(event) =>
-                  setValues((prev) => ({ ...prev, [field.name]: event.target.value }))
-                }
-                required={!field.optional && field.type !== "nullable-text" && field.type !== "month"}
-                placeholder={
-                  field.type === "month"
-                    ? "YYYY-MM"
-                    : field.name === "submissionDate"
-                      ? "YYYY-MM-DD"
-                      : undefined
-                }
-              />
-            )}
-          </label>
-        ))}
+    <div className="stack">
+      <div className="card">
+        <div className="year-row" style={{ justifyContent: "space-between" }}>
+          <h2 className="section-title" style={{ margin: 0 }}>
+            {config.title}
+          </h2>
+          <button type="button" className="linkish" onClick={startNew}>
+            New
+          </button>
+        </div>
+        {listError && <div className="error">{listError}</div>}
+        {records.length === 0 && !listError ? (
+          <div className="muted">No records yet.</div>
+        ) : (
+          <ul className="pipeline-list" style={{ listStyle: "none", padding: 0, margin: "0.85rem 0 0" }}>
+            {records.map((record) => {
+              const key = config.recordKey(record);
+              return (
+                <li key={key}>
+                  <button
+                    type="button"
+                    className={`linkish${editingId === key ? " active" : ""}`}
+                    onClick={() => startEdit(record)}
+                  >
+                    {config.rowLabel(record)}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </div>
-      <button className="primary" type="submit">
-        Save
-      </button>
-      {error && <div className="error">{error}</div>}
-      {success && <div className="success">{success}</div>}
-    </form>
+
+      <form className="card stack" onSubmit={(event) => void onSubmit(event)}>
+        <h2 className="section-title">{editingId ? "Edit record" : "New record"}</h2>
+        <div className="form-grid">
+          {config.fields.map((field) => (
+            <label key={field.name}>
+              {field.label}
+              {field.type === "select" ? (
+                <select
+                  value={values[field.name] ?? ""}
+                  onChange={(event) =>
+                    setValues((prev) => ({ ...prev, [field.name]: event.target.value }))
+                  }
+                  required={!field.optional}
+                >
+                  {(field.options ?? []).map((option) => (
+                    <option key={option || "blank"} value={option}>
+                      {option === "" ? "—" : option}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type={field.type === "number" ? "number" : "text"}
+                  step={field.type === "number" ? "any" : undefined}
+                  value={values[field.name] ?? ""}
+                  onChange={(event) =>
+                    setValues((prev) => ({ ...prev, [field.name]: event.target.value }))
+                  }
+                  required={!field.optional && field.type !== "nullable-text" && field.type !== "month"}
+                  placeholder={
+                    field.type === "month"
+                      ? "YYYY-MM"
+                      : field.name === "submissionDate"
+                        ? "YYYY-MM-DD"
+                        : undefined
+                  }
+                />
+              )}
+            </label>
+          ))}
+        </div>
+        <button className="primary" type="submit">
+          Save
+        </button>
+        {error && <div className="error">{error}</div>}
+        {success && <div className="success">{success}</div>}
+      </form>
+    </div>
   );
 }

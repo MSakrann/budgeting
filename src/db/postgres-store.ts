@@ -205,7 +205,7 @@ function isForeignKeyViolation(err: unknown): boolean {
   return walk(err);
 }
 
-async function withFkGuard<T>(kind: "write" | "delete", fn: () => Promise<T>): Promise<T> {
+async function withFkGuard(kind: "write" | "delete", fn: () => unknown): Promise<any> {
   try {
     return await fn();
   } catch (err) {

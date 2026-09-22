@@ -4,6 +4,7 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { verifyPassword } from "../auth/password.js";
 import { readSession, signSession } from "../auth/session.js";
 import { buildDashboard } from "../domain/dashboard.js";
+import type { Ledger } from "../domain/types.js";
 import type { Store, User } from "../store/types.js";
 
 const COOKIE_NAME = "budget_session";
@@ -15,6 +16,19 @@ type AppContext = Context<AppEnv>;
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : "Unknown error";
+}
+
+/** Current calendar year plus rate, budget-line, PO budget, and invoice submission years. */
+export function ledgerYears(ledger: Ledger, currentYear = new Date().getFullYear()): number[] {
+  const years = new Set<number>([currentYear]);
+  for (const rates of ledger.rates) years.add(rates.year);
+  for (const line of ledger.budgetLines) years.add(line.year);
+  for (const po of ledger.purchaseOrders) years.add(po.budgetYear);
+  for (const invoice of ledger.invoices) {
+    const year = Number(invoice.submissionDate.slice(0, 4));
+    if (Number.isFinite(year)) years.add(year);
+  }
+  return Array.from(years).sort((a, b) => a - b);
 }
 
 export function createApp(store: Store, sessionSecret: string): Hono<AppEnv> {
@@ -89,11 +103,42 @@ export function createApp(store: Store, sessionSecret: string): Hono<AppEnv> {
       return c.json({ error: "Invalid year" }, 400);
     }
     try {
-      const dashboard = buildDashboard(await store.loadLedger(), year);
-      return c.json(dashboard);
+      const ledger = await store.loadLedger();
+      const dashboard = buildDashboard(ledger, year);
+      return c.json({ ...dashboard, years: ledgerYears(ledger) });
     } catch (err) {
       return c.json({ error: errorMessage(err) }, 400);
     }
+  });
+
+  app.get("/api/rates", async (c) => {
+    const ledger = await store.loadLedger();
+    return c.json(ledger.rates);
+  });
+
+  app.get("/api/budget-lines", async (c) => {
+    const ledger = await store.loadLedger();
+    return c.json(ledger.budgetLines);
+  });
+
+  app.get("/api/purchase-requests", async (c) => {
+    const ledger = await store.loadLedger();
+    return c.json(ledger.purchaseRequests);
+  });
+
+  app.get("/api/iecs", async (c) => {
+    const ledger = await store.loadLedger();
+    return c.json(ledger.iecs);
+  });
+
+  app.get("/api/purchase-orders", async (c) => {
+    const ledger = await store.loadLedger();
+    return c.json(ledger.purchaseOrders);
+  });
+
+  app.get("/api/invoices", async (c) => {
+    const ledger = await store.loadLedger();
+    return c.json(ledger.invoices);
   });
 
   app.put("/api/rates/:year", async (c) => {

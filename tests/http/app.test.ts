@@ -96,4 +96,55 @@ describe("http", () => {
     const setCookie = logout.headers.get("set-cookie") ?? "";
     expect(setCookie.toLowerCase()).toMatch(/budget_session=/);
   });
+
+  it("lists resources for editors, blocks viewers, and returns dashboard years", async () => {
+    const app = await editorApp();
+    const editor = await login(app, "editor@orange.com");
+    const viewer = await login(app, "cto@orange.com");
+
+    const created = await app.request("/api/budget-lines", {
+      method: "POST",
+      headers: { cookie: editor, "content-type": "application/json" },
+      body: JSON.stringify({
+        year: 2025, projectTitle: "Lake", kind: "capex", currency: "EGP", amount: 1000,
+      }),
+    });
+    expect(created.status).toBe(200);
+    const line = await created.json();
+
+    const rates = await app.request("/api/rates", { headers: { cookie: editor } });
+    expect(rates.status).toBe(200);
+    expect(await rates.json()).toEqual([{ year: 2026, usdToEgp: 52.6, eurToEgp: 61 }]);
+
+    const lines = await app.request("/api/budget-lines", { headers: { cookie: editor } });
+    expect(lines.status).toBe(200);
+    expect(await lines.json()).toEqual([expect.objectContaining({ id: line.id, year: 2025 })]);
+
+    for (const path of [
+      "/api/rates",
+      "/api/budget-lines",
+      "/api/purchase-requests",
+      "/api/iecs",
+      "/api/purchase-orders",
+      "/api/invoices",
+    ]) {
+      const forbidden = await app.request(path, { headers: { cookie: viewer } });
+      expect(forbidden.status).toBe(403);
+    }
+
+    const updated = await app.request(`/api/budget-lines/${line.id}`, {
+      method: "PUT",
+      headers: { cookie: editor, "content-type": "application/json" },
+      body: JSON.stringify({
+        year: 2025, projectTitle: "Lake Updated", kind: "capex", currency: "EGP", amount: 2000,
+      }),
+    });
+    expect(updated.status).toBe(200);
+    expect(await updated.json()).toMatchObject({ projectTitle: "Lake Updated", amount: 2000 });
+
+    const dashboard = await app.request("/api/dashboard?year=2026", { headers: { cookie: viewer } });
+    expect(dashboard.status).toBe(200);
+    const body = await dashboard.json();
+    expect(body.years).toEqual(expect.arrayContaining([new Date().getFullYear(), 2025, 2026]));
+  });
 });

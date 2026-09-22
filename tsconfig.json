@@ -6,9 +6,9 @@
     "strict": true,
     "jsx": "react-jsx",
     "outDir": "dist",
-    "rootDir": ".",
+    "rootDir": "src",
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["src", "tests", "client", "vite.config.ts", "vitest.config.ts"]
+  "include": ["src"]
 }
