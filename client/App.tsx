@@ -92,7 +92,7 @@ const RESOURCE_CONFIG: Record<Exclude<Page, "dashboard">, ResourceConfig> = {
   rates: {
     title: "Rates",
     listPath: "/api/rates",
-    updatePath: (values) => `/api/rates/${values.year}`,
+    updatePath: (values, editingId) => `/api/rates/${editingId ?? values.year}`,
     fields: [
       { name: "year", label: "Year", type: "number" },
       { name: "usdToEgp", label: "USD to EGP", type: "number" },
@@ -498,9 +498,11 @@ function Dashboard() {
   const [selectedPoId, setSelectedPoId] = useState<string | null>(null);
 
   useEffect(() => {
+    let ignore = false;
     void (async () => {
       setError(null);
       const result = await api<DashboardData>(`/api/dashboard?year=${year}`);
+      if (ignore) return;
       if (!result.ok) {
         setData(null);
         setError(result.error);
@@ -510,6 +512,9 @@ function Dashboard() {
       setYears(result.data.years);
       setSelectedPoId(null);
     })();
+    return () => {
+      ignore = true;
+    };
   }, [year]);
 
   const selectedPo = data?.purchaseOrders.find((po) => po.id === selectedPoId) ?? null;
@@ -845,6 +850,7 @@ function ResourcePage({ config }: { config: ResourceConfig }) {
                   onChange={(event) =>
                     setValues((prev) => ({ ...prev, [field.name]: event.target.value }))
                   }
+                  disabled={config.listPath === "/api/rates" && field.name === "year" && editingId !== null}
                   required={!field.optional && field.type !== "nullable-text" && field.type !== "month"}
                   placeholder={
                     field.type === "month"

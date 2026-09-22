@@ -11,8 +11,18 @@ import { createMemoryStore } from "./store/memory.js";
 import type { Store } from "./store/types.js";
 
 const port = Number(process.env.PORT ?? 3000);
-const sessionSecret = process.env.SESSION_SECRET ?? "dev-session-secret";
 const clientDist = join(process.cwd(), "client", "dist");
+
+function resolveSessionSecret(): string {
+  const secret = process.env.SESSION_SECRET;
+  if (secret) return secret;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("SESSION_SECRET is required when NODE_ENV is production");
+  }
+  return "dev-session-secret";
+}
+
+const sessionSecret = resolveSessionSecret();
 
 async function openStore(): Promise<Store> {
   const databaseUrl = process.env.DATABASE_URL;
