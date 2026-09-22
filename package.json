@@ -5,7 +5,8 @@
   "scripts": {
     "test": "vitest run",
     "dev": "vite",
-    "build": "vite build && tsc -p tsconfig.json",
+    "build": "vite build && tsc -p tsconfig.json && tsc -p tsconfig.client.json",
+    "typecheck:client": "tsc -p tsconfig.client.json",
     "start": "node dist/server.js"
   },
   "dependencies": {

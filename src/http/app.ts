@@ -18,11 +18,13 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : "Unknown error";
 }
 
-/** Current calendar year plus rate, budget-line, PO budget, and invoice submission years. */
+/** Current calendar year plus rate, budget-line, PR, IEC, PO budget, and invoice submission years. */
 export function ledgerYears(ledger: Ledger, currentYear = new Date().getFullYear()): number[] {
   const years = new Set<number>([currentYear]);
   for (const rates of ledger.rates) years.add(rates.year);
   for (const line of ledger.budgetLines) years.add(line.year);
+  for (const pr of ledger.purchaseRequests) years.add(pr.year);
+  for (const iec of ledger.iecs) years.add(iec.year);
   for (const po of ledger.purchaseOrders) years.add(po.budgetYear);
   for (const invoice of ledger.invoices) {
     const year = Number(invoice.submissionDate.slice(0, 4));

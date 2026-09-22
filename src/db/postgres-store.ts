@@ -205,7 +205,7 @@ function isForeignKeyViolation(err: unknown): boolean {
   return walk(err);
 }
 
-async function withFkGuard(kind: "write" | "delete", fn: () => unknown): Promise<any> {
+async function withFkGuard<T>(kind: "write" | "delete", fn: () => Promise<T>): Promise<T> {
   try {
     return await fn();
   } catch (err) {
@@ -322,22 +322,26 @@ function buildStore(db: Db): Store {
         db.select().from(purchaseOrders).where(eq(purchaseOrders.budgetLineId, id)),
       ]);
       if (prRefs.length > 0 || poRefs.length > 0) throw new Error("in use");
-      await withFkGuard("delete", () => db.delete(budgetLines).where(eq(budgetLines.id, id)));
+      await withFkGuard("delete", async () => {
+        await db.delete(budgetLines).where(eq(budgetLines.id, id));
+      });
     },
 
     async createPurchaseRequest(input) {
       assertPurchaseRequestInput(input, await ratesForYear(db, input.year));
       await requireBudgetLine(input.budgetLineId);
       const row = { id: crypto.randomUUID(), ...input };
-      await withFkGuard("write", () => db.insert(purchaseRequests).values(row));
+      await withFkGuard("write", async () => {
+        await db.insert(purchaseRequests).values(row);
+      });
       return row;
     },
 
     async updatePurchaseRequest(id, input) {
       assertPurchaseRequestInput(input, await ratesForYear(db, input.year));
       await requireBudgetLine(input.budgetLineId);
-      const result = await withFkGuard("write", () =>
-        db.update(purchaseRequests).set(input).where(eq(purchaseRequests.id, id)).returning(),
+      const result = await withFkGuard("write", async () =>
+        await db.update(purchaseRequests).set(input).where(eq(purchaseRequests.id, id)).returning(),
       );
       if (!result[0]) throw new Error("not found");
       return mapPurchaseRequest(result[0]);
@@ -346,22 +350,26 @@ function buildStore(db: Db): Store {
     async deletePurchaseRequest(id) {
       const refs = await db.select().from(iecs).where(eq(iecs.purchaseRequestId, id));
       if (refs.length > 0) throw new Error("in use");
-      await withFkGuard("delete", () => db.delete(purchaseRequests).where(eq(purchaseRequests.id, id)));
+      await withFkGuard("delete", async () => {
+        await db.delete(purchaseRequests).where(eq(purchaseRequests.id, id));
+      });
     },
 
     async createIec(input) {
       assertIecInput(input, await ratesForYear(db, input.year));
       await requirePurchaseRequest(input.purchaseRequestId);
       const row = { id: crypto.randomUUID(), ...input };
-      await withFkGuard("write", () => db.insert(iecs).values(row));
+      await withFkGuard("write", async () => {
+        await db.insert(iecs).values(row);
+      });
       return row;
     },
 
     async updateIec(id, input) {
       assertIecInput(input, await ratesForYear(db, input.year));
       await requirePurchaseRequest(input.purchaseRequestId);
-      const result = await withFkGuard("write", () =>
-        db.update(iecs).set(input).where(eq(iecs.id, id)).returning(),
+      const result = await withFkGuard("write", async () =>
+        await db.update(iecs).set(input).where(eq(iecs.id, id)).returning(),
       );
       if (!result[0]) throw new Error("not found");
       return mapIec(result[0]);
@@ -377,8 +385,8 @@ function buildStore(db: Db): Store {
       const existing = await db.select().from(purchaseOrders).where(eq(purchaseOrders.number, input.number));
       if (existing.length > 0) throw new Error("Purchase order number already exists");
       const id = crypto.randomUUID();
-      await withFkGuard("write", () =>
-        db.insert(purchaseOrders).values({
+      await withFkGuard("write", async () => {
+        await db.insert(purchaseOrders).values({
           id,
           number: input.number,
           budgetYear: input.budgetYear,
@@ -389,8 +397,8 @@ function buildStore(db: Db): Store {
           kind: input.kind,
           budgetLineId: input.budgetLineId,
           ...capFields(input),
-        }),
-      );
+        });
+      });
       return { id, ...input };
     },
 
@@ -401,8 +409,8 @@ function buildStore(db: Db): Store {
       if (duplicates.some((row) => row.id !== id)) {
         throw new Error("Purchase order number already exists");
       }
-      const result = await withFkGuard("write", () =>
-        db
+      const result = await withFkGuard("write", async () =>
+        await db
           .update(purchaseOrders)
           .set({
             number: input.number,
@@ -425,22 +433,26 @@ function buildStore(db: Db): Store {
     async deletePurchaseOrder(id) {
       const refs = await db.select().from(invoices).where(eq(invoices.purchaseOrderId, id));
       if (refs.length > 0) throw new Error("in use");
-      await withFkGuard("delete", () => db.delete(purchaseOrders).where(eq(purchaseOrders.id, id)));
+      await withFkGuard("delete", async () => {
+        await db.delete(purchaseOrders).where(eq(purchaseOrders.id, id));
+      });
     },
 
     async createInvoice(input) {
       const po = await requirePurchaseOrder(input.purchaseOrderId);
       assertInvoiceInput(input, await ratesForYear(db, po.budgetYear));
       const row = { id: crypto.randomUUID(), ...input };
-      await withFkGuard("write", () => db.insert(invoices).values(row));
+      await withFkGuard("write", async () => {
+        await db.insert(invoices).values(row);
+      });
       return row;
     },
 
     async updateInvoice(id, input) {
       const po = await requirePurchaseOrder(input.purchaseOrderId);
       assertInvoiceInput(input, await ratesForYear(db, po.budgetYear));
-      const result = await withFkGuard("write", () =>
-        db.update(invoices).set(input).where(eq(invoices.id, id)).returning(),
+      const result = await withFkGuard("write", async () =>
+        await db.update(invoices).set(input).where(eq(invoices.id, id)).returning(),
       );
       if (!result[0]) throw new Error("not found");
       return mapInvoice(result[0]);

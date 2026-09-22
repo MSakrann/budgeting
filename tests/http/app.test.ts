@@ -112,6 +112,27 @@ describe("http", () => {
     expect(created.status).toBe(200);
     const line = await created.json();
 
+    const pr = await app.request("/api/purchase-requests", {
+      method: "POST",
+      headers: { cookie: editor, "content-type": "application/json" },
+      body: JSON.stringify({
+        title: "PR-only year", year: 2024, amount: 10, currency: "EGP",
+        budgetLineId: null, status: "Draft",
+      }),
+    });
+    expect(pr.status).toBe(200);
+
+    const iec = await app.request("/api/iecs", {
+      method: "POST",
+      headers: { cookie: editor, "content-type": "application/json" },
+      body: JSON.stringify({
+        title: "IEC-only year", year: 2023, projectCode: "DL", supplier: null,
+        kind: "capex", currency: "EGP", budgetAmount: 10, requestedAmount: 10,
+        note: null, purchaseRequestId: null, status: "Draft",
+      }),
+    });
+    expect(iec.status).toBe(200);
+
     const rates = await app.request("/api/rates", { headers: { cookie: editor } });
     expect(rates.status).toBe(200);
     expect(await rates.json()).toEqual([{ year: 2026, usdToEgp: 52.6, eurToEgp: 61 }]);
@@ -145,6 +166,8 @@ describe("http", () => {
     const dashboard = await app.request("/api/dashboard?year=2026", { headers: { cookie: viewer } });
     expect(dashboard.status).toBe(200);
     const body = await dashboard.json();
-    expect(body.years).toEqual(expect.arrayContaining([new Date().getFullYear(), 2025, 2026]));
+    expect(body.years).toEqual(
+      expect.arrayContaining([new Date().getFullYear(), 2023, 2024, 2025, 2026]),
+    );
   });
 });
