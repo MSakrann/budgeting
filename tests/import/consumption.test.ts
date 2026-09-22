@@ -3,10 +3,12 @@ import { importConsumption, roundMoney, type ConsumptionRow } from "../../src/im
 
 describe("roundMoney", () => {
   it.each([
+    [10.075, 10.08],
     [1.005, 1.01],
     [-1.005, -1.01],
     [1.004, 1.0],
     [-1.004, -1.0],
+    [201530.72000000003, 201530.72],
   ])("rounds %f to %f", (amount, expected) => {
     expect(roundMoney(amount)).toBe(expected);
   });
