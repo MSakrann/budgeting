@@ -52,9 +52,25 @@ export async function seedStore(
   });
 }
 
-/** Ready Hono app: store opened, seed applied, routes mounted. */
+let seedPromise: Promise<void> | null = null;
+
+/** Wait until users/rates seed finishes (needed before login). */
+export function waitForSeed(): Promise<void> {
+  return seedPromise ?? Promise.resolve();
+}
+
+/** Ready Hono app. On Vercel, seed runs in the background so the login screen can appear without waiting on Neon. */
 export async function bootstrapApp(env: NodeJS.ProcessEnv = process.env) {
   const store = await openStore(env);
+  if (env.VERCEL) {
+    seedPromise = seedStore(store, env).catch((err) => {
+      seedPromise = null;
+      console.error("Background seed failed:", err instanceof Error ? err.message : err);
+      throw err;
+    });
+    return createApp(store, resolveSessionSecret(env));
+  }
   await seedStore(store, env);
+  seedPromise = Promise.resolve();
   return createApp(store, resolveSessionSecret(env));
 }
