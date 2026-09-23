@@ -169,5 +169,21 @@ describe("http", () => {
     expect(body.years).toEqual(
       expect.arrayContaining([new Date().getFullYear(), 2023, 2024, 2025, 2026]),
     );
+
+    const forbiddenDelete = await app.request(`/api/budget-lines/${line.id}`, {
+      method: "DELETE",
+      headers: { cookie: viewer },
+    });
+    expect(forbiddenDelete.status).toBe(403);
+
+    const deleted = await app.request(`/api/budget-lines/${line.id}`, {
+      method: "DELETE",
+      headers: { cookie: editor },
+    });
+    expect(deleted.status).toBe(204);
+
+    const linesAfter = await app.request("/api/budget-lines", { headers: { cookie: editor } });
+    expect(linesAfter.status).toBe(200);
+    expect(await linesAfter.json()).toEqual([]);
   });
 });

@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { api } from "./api.js";
 import { formatEgp, formatPercent } from "./format.js";
 
 type Role = "editor" | "viewer";
@@ -83,6 +84,7 @@ type ResourceConfig = {
   toFormValues: (record: ResourceRecord) => Record<string, string>;
   rowLabel: (record: ResourceRecord) => string;
   recordKey: (record: ResourceRecord) => string;
+  deletePath?: (record: ResourceRecord) => string;
 };
 
 const STATUSES = ["Draft", "In progress", "Approved", "Rejected", "Closed"];
@@ -142,6 +144,7 @@ const RESOURCE_CONFIG: Record<Exclude<Page, "dashboard">, ResourceConfig> = {
     }),
     rowLabel: (record) => `${record.year} · ${record.projectTitle} · ${record.amount} ${record.currency}`,
     recordKey: (record) => String(record.id),
+    deletePath: (record) => `/api/budget-lines/${String(record.id)}`,
   },
   prs: {
     name: "prs",
@@ -175,6 +178,7 @@ const RESOURCE_CONFIG: Record<Exclude<Page, "dashboard">, ResourceConfig> = {
     }),
     rowLabel: (record) => `${record.year} · ${record.title} · ${record.status}`,
     recordKey: (record) => String(record.id),
+    deletePath: (record) => `/api/purchase-requests/${String(record.id)}`,
   },
   iecs: {
     name: "iecs",
@@ -223,6 +227,7 @@ const RESOURCE_CONFIG: Record<Exclude<Page, "dashboard">, ResourceConfig> = {
     }),
     rowLabel: (record) => `${record.year} · ${record.title} · ${record.status}`,
     recordKey: (record) => String(record.id),
+    deletePath: (record) => `/api/iecs/${String(record.id)}`,
   },
   pos: {
     name: "pos",
@@ -268,6 +273,7 @@ const RESOURCE_CONFIG: Record<Exclude<Page, "dashboard">, ResourceConfig> = {
     }),
     rowLabel: (record) => `${record.number} · ${record.supplier} · ${record.budgetYear}`,
     recordKey: (record) => String(record.id),
+    deletePath: (record) => `/api/purchase-orders/${String(record.id)}`,
   },
   invoices: {
     name: "invoices",
@@ -306,6 +312,7 @@ const RESOURCE_CONFIG: Record<Exclude<Page, "dashboard">, ResourceConfig> = {
       `${record.submissionDate} · ${record.amount} ${record.currency}` +
       (record.receiptNumber ? " · cashed out" : " · submitted"),
     recordKey: (record) => String(record.id),
+    deletePath: (record) => `/api/invoices/${String(record.id)}`,
   },
 };
 
@@ -336,41 +343,11 @@ function emptyValues(fields: FieldConfig[]): Record<string, string> {
   return Object.fromEntries(fields.map((field) => [field.name, ""]));
 }
 
-async function api<T>(
-  path: string,
-  init?: RequestInit,
-): Promise<{ ok: true; data: T } | { ok: false; status: number; error: string }> {
-  const response = await fetch(path, {
-    credentials: "include",
-    headers: { "content-type": "application/json", ...(init?.headers ?? {}) },
-    ...init,
-  });
-  if (response.status === 204) {
-    return { ok: true, data: undefined as T };
-  }
-  const text = await response.text();
-  let body: unknown = null;
-  if (text) {
-    try {
-      body = JSON.parse(text);
-    } catch {
-      body = { error: text };
-    }
-  }
-  if (!response.ok) {
-    const error =
-      body && typeof body === "object" && body !== null && "error" in body
-        ? String((body as { error: unknown }).error)
-        : `Request failed (${response.status})`;
-    return { ok: false, status: response.status, error };
-  }
-  return { ok: true, data: body as T };
-}
-
 export function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState<Page>("dashboard");
+  const [logoutError, setLogoutError] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -381,7 +358,12 @@ export function App() {
   }, []);
 
   async function logout() {
-    await api("/api/session", { method: "DELETE" });
+    setLogoutError(null);
+    const result = await api("/api/session", { method: "DELETE" });
+    if (!result.ok) {
+      setLogoutError(result.error);
+      return;
+    }
     setSession(null);
     setPage("dashboard");
   }
@@ -440,6 +422,7 @@ export function App() {
             Log out
           </button>
         </nav>
+        {logoutError && <div className="error">{logoutError}</div>}
       </header>
 
       {page === "dashboard" ? <Dashboard /> : <ResourcePage config={RESOURCE_CONFIG[page]} />}
@@ -622,8 +605,17 @@ function Dashboard() {
                 {data.purchaseOrders.map((po) => (
                   <tr
                     key={po.id}
+                    role="button"
+                    tabIndex={0}
+                    aria-pressed={selectedPoId === po.id}
                     className={selectedPoId === po.id ? "selected" : undefined}
                     onClick={() => setSelectedPoId(po.id)}
+                    onKeyDown={(event: KeyboardEvent<HTMLTableRowElement>) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setSelectedPoId(po.id);
+                      }
+                    }}
                   >
                     <td>
                       {po.number}
@@ -736,6 +728,8 @@ function ResourcePage({ config }: { config: ResourceConfig }) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [listError, setListError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const currentResourceRef = useRef(config.name);
   currentResourceRef.current = config.name;
 
@@ -760,6 +754,8 @@ function ResourcePage({ config }: { config: ResourceConfig }) {
     setSuccess(null);
     setListError(null);
     setRecords([]);
+    setSaving(false);
+    setDeleting(false);
     void loadList();
   }, [config]);
 
@@ -777,8 +773,36 @@ function ResourcePage({ config }: { config: ResourceConfig }) {
     setSuccess(null);
   }
 
+  async function onDelete(record: ResourceRecord) {
+    if (!config.deletePath || deleting || saving) return;
+    const key = config.recordKey(record);
+    const label = config.rowLabel(record);
+    if (!window.confirm(`Delete “${label}”? This cannot be undone.`)) return;
+
+    setError(null);
+    setSuccess(null);
+    const resource = config.name;
+    setDeleting(true);
+    try {
+      const result = await api(config.deletePath(record), { method: "DELETE" });
+      if (resource !== currentResourceRef.current) return;
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      if (editingId === key) {
+        startNew();
+      }
+      setSuccess("Deleted.");
+      await loadList();
+    } finally {
+      if (resource === currentResourceRef.current) setDeleting(false);
+    }
+  }
+
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
+    if (saving) return;
     setError(null);
     setSuccess(null);
     const resource = config.name;
@@ -788,20 +812,25 @@ function ResourcePage({ config }: { config: ResourceConfig }) {
       ? config.updatePath(values, editingId)
       : (config.createPath as string);
     const method = isUpdate ? "PUT" : "POST";
-    const result = await api(path, {
-      method,
-      body: JSON.stringify(body),
-    });
-    if (resource !== currentResourceRef.current) return;
-    if (!result.ok) {
-      setError(result.error);
-      return;
-    }
-    setSuccess(isUpdate ? "Updated." : "Created.");
-    await loadList();
-    if (resource !== currentResourceRef.current) return;
-    if (!isUpdate && result.data && typeof result.data === "object" && result.data !== null) {
-      startEdit(result.data as ResourceRecord);
+    setSaving(true);
+    try {
+      const result = await api(path, {
+        method,
+        body: JSON.stringify(body),
+      });
+      if (resource !== currentResourceRef.current) return;
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      setSuccess(isUpdate ? "Updated." : "Created.");
+      await loadList();
+      if (resource !== currentResourceRef.current) return;
+      if (!isUpdate && result.data && typeof result.data === "object" && result.data !== null) {
+        startEdit(result.data as ResourceRecord);
+      }
+    } finally {
+      if (resource === currentResourceRef.current) setSaving(false);
     }
   }
 
@@ -820,11 +849,11 @@ function ResourcePage({ config }: { config: ResourceConfig }) {
         {records.length === 0 && !listError ? (
           <div className="muted">No records yet.</div>
         ) : (
-          <ul className="pipeline-list" style={{ listStyle: "none", padding: 0, margin: "0.85rem 0 0" }}>
+          <ul className="pipeline-list record-list">
             {records.map((record) => {
               const key = config.recordKey(record);
               return (
-                <li key={key}>
+                <li key={key} className="record-row">
                   <button
                     type="button"
                     className={`linkish${editingId === key ? " active" : ""}`}
@@ -832,6 +861,16 @@ function ResourcePage({ config }: { config: ResourceConfig }) {
                   >
                     {config.rowLabel(record)}
                   </button>
+                  {config.deletePath && (
+                    <button
+                      type="button"
+                      className="linkish danger"
+                      disabled={saving || deleting}
+                      onClick={() => void onDelete(record)}
+                    >
+                      Delete
+                    </button>
+                  )}
                 </li>
               );
             })}
@@ -881,9 +920,24 @@ function ResourcePage({ config }: { config: ResourceConfig }) {
             </label>
           ))}
         </div>
-        <button className="primary" type="submit">
-          Save
-        </button>
+        <div className="form-actions">
+          <button className="primary" type="submit" disabled={saving || deleting}>
+            {saving ? "Saving…" : "Save"}
+          </button>
+          {editingId !== null && config.deletePath && (
+            <button
+              type="button"
+              className="linkish danger"
+              disabled={saving || deleting}
+              onClick={() => {
+                const record = records.find((item) => config.recordKey(item) === editingId);
+                if (record) void onDelete(record);
+              }}
+            >
+              {deleting ? "Deleting…" : "Delete"}
+            </button>
+          )}
+        </div>
         {error && <div className="error">{error}</div>}
         {success && <div className="success">{success}</div>}
       </form>

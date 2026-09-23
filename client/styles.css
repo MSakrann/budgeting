@@ -158,6 +158,59 @@ tbody tr.selected {
   background: rgba(255, 121, 0, 0.06);
 }
 
+tbody tr[role="button"]:focus-visible {
+  outline: 2px solid #ff7900;
+  outline-offset: -2px;
+}
+
+button.linkish {
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  color: #1a1a1a;
+  font-weight: 600;
+  text-align: left;
+}
+
+button.linkish.active {
+  color: #ff7900;
+}
+
+button.linkish.danger {
+  color: #8a0019;
+}
+
+button.linkish:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.record-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.85rem 0 0;
+}
+
+.record-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+}
+
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+}
+
+button.primary:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
 .badge {
   display: inline-block;
   margin-right: 0.35rem;
