@@ -11,6 +11,15 @@ type SeedUser = {
   role: "editor" | "viewer";
 };
 
+function isMissingFileError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const code = (err as { code?: unknown }).code;
+  if (code === "ENOENT") return true;
+  const cause = (err as { cause?: unknown }).cause;
+  if (cause && cause !== err) return isMissingFileError(cause);
+  return false;
+}
+
 async function ensureSeedUser(store: Store, user: SeedUser): Promise<void> {
   if (!user.email || !user.password || !user.name) return;
   if ((await store.findUserByEmail(user.email)) !== null) return;
@@ -57,8 +66,11 @@ export async function seed(
   try {
     rows = await readRows();
   } catch (err) {
-    console.error("Consumption workbook unavailable; skipping import", err);
-    return;
+    if (isMissingFileError(err)) {
+      console.error("Consumption workbook missing; skipping import", err);
+      return;
+    }
+    throw err;
   }
 
   const existing = await store.loadLedger();
