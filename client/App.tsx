@@ -390,6 +390,8 @@ export function App() {
         setSession(null);
         setSessionLoadError(null);
       } else {
+        // Never block the login screen on a bad session probe — show sign-in with the error.
+        setSession(null);
         setSessionLoadError(result.error);
       }
       setLoading(false);
@@ -411,23 +413,13 @@ export function App() {
     return <div className="app-shell muted">Loading…</div>;
   }
 
-  if (sessionLoadError) {
-    return (
-      <div className="app-shell">
-        <div className="card">
-          <h1>Could not load session</h1>
-          <p className="error">{sessionLoadError}</p>
-          <p className="muted">Check your connection or try again later. You are not signed out.</p>
-        </div>
-      </div>
-    );
-  }
-
   if (!session) {
     return (
       <Login
+        bannerError={sessionLoadError}
         onLoggedIn={(user) => {
           setSession(user);
+          setSessionLoadError(null);
           setPage("dashboard");
         }}
       />
@@ -481,7 +473,13 @@ export function App() {
   );
 }
 
-function Login({ onLoggedIn }: { onLoggedIn: (session: Session) => void }) {
+function Login({
+  onLoggedIn,
+  bannerError,
+}: {
+  onLoggedIn: (session: Session) => void;
+  bannerError?: string | null;
+}) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -508,6 +506,7 @@ function Login({ onLoggedIn }: { onLoggedIn: (session: Session) => void }) {
         </div>
         <h1>Sign in</h1>
         <p className="muted">Editors keep the ledger. The viewer opens the year dashboard.</p>
+        {bannerError && <p className="error">{bannerError}</p>}
         <label>
           Email
           <input value={email} onChange={(event) => setEmail(event.target.value)} type="email" required />
