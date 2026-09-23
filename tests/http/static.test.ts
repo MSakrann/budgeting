@@ -64,6 +64,17 @@ describe("static files", () => {
     expect(await response.text()).not.toMatch(/DOCTYPE/i);
   });
 
+  it("returns 404 for missing assets even when Accept includes text/html", async () => {
+    const root = mkdtempSync(join(tmpdir(), "budget-static-"));
+    writeFileSync(join(root, "index.html"), "<!DOCTYPE html><html></html>");
+    const app = createStaticApp(root);
+    const response = await app.request("/assets/missing.js", {
+      headers: { accept: "text/html,application/xhtml+xml" },
+    });
+    expect(response.status).toBe(404);
+    expect(await response.text()).not.toMatch(/DOCTYPE/i);
+  });
+
   it("falls back to index.html for HTML navigation to unknown routes", async () => {
     const root = mkdtempSync(join(tmpdir(), "budget-static-"));
     const html = "<!DOCTYPE html><html><body>app</body></html>";

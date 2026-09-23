@@ -73,6 +73,7 @@ type FieldConfig = {
 type ResourceRecord = Record<string, unknown>;
 
 type ResourceConfig = {
+  name: string;
   title: string;
   listPath: string;
   createPath?: string;
@@ -90,6 +91,7 @@ const KINDS = ["capex", "opex"];
 
 const RESOURCE_CONFIG: Record<Exclude<Page, "dashboard">, ResourceConfig> = {
   rates: {
+    name: "rates",
     title: "Rates",
     listPath: "/api/rates",
     updatePath: (values, editingId) => `/api/rates/${editingId ?? values.year}`,
@@ -112,6 +114,7 @@ const RESOURCE_CONFIG: Record<Exclude<Page, "dashboard">, ResourceConfig> = {
     recordKey: (record) => String(record.year),
   },
   "budget-lines": {
+    name: "budget-lines",
     title: "Budget lines",
     listPath: "/api/budget-lines",
     createPath: "/api/budget-lines",
@@ -141,6 +144,7 @@ const RESOURCE_CONFIG: Record<Exclude<Page, "dashboard">, ResourceConfig> = {
     recordKey: (record) => String(record.id),
   },
   prs: {
+    name: "prs",
     title: "Purchase requests",
     listPath: "/api/purchase-requests",
     createPath: "/api/purchase-requests",
@@ -173,6 +177,7 @@ const RESOURCE_CONFIG: Record<Exclude<Page, "dashboard">, ResourceConfig> = {
     recordKey: (record) => String(record.id),
   },
   iecs: {
+    name: "iecs",
     title: "IECs",
     listPath: "/api/iecs",
     createPath: "/api/iecs",
@@ -220,6 +225,7 @@ const RESOURCE_CONFIG: Record<Exclude<Page, "dashboard">, ResourceConfig> = {
     recordKey: (record) => String(record.id),
   },
   pos: {
+    name: "pos",
     title: "Purchase orders",
     listPath: "/api/purchase-orders",
     createPath: "/api/purchase-orders",
@@ -264,6 +270,7 @@ const RESOURCE_CONFIG: Record<Exclude<Page, "dashboard">, ResourceConfig> = {
     recordKey: (record) => String(record.id),
   },
   invoices: {
+    name: "invoices",
     title: "Invoices",
     listPath: "/api/invoices",
     createPath: "/api/invoices",
@@ -729,12 +736,13 @@ function ResourcePage({ config }: { config: ResourceConfig }) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [listError, setListError] = useState<string | null>(null);
-  const listRequestId = useRef(0);
+  const currentResourceRef = useRef(config.name);
+  currentResourceRef.current = config.name;
 
   async function loadList() {
-    const requestId = ++listRequestId.current;
+    const resource = config.name;
     const result = await api<ResourceRecord[]>(config.listPath);
-    if (requestId !== listRequestId.current) return;
+    if (resource !== currentResourceRef.current) return;
     if (!result.ok) {
       setListError(result.error);
       setRecords([]);
@@ -745,6 +753,7 @@ function ResourcePage({ config }: { config: ResourceConfig }) {
   }
 
   useEffect(() => {
+    currentResourceRef.current = config.name;
     setEditingId(null);
     setValues(emptyValues(config.fields));
     setError(null);
@@ -772,6 +781,7 @@ function ResourcePage({ config }: { config: ResourceConfig }) {
     event.preventDefault();
     setError(null);
     setSuccess(null);
+    const resource = config.name;
     const body = config.transform(values);
     const isUpdate = editingId !== null || !config.createPath;
     const path = isUpdate
@@ -782,12 +792,14 @@ function ResourcePage({ config }: { config: ResourceConfig }) {
       method,
       body: JSON.stringify(body),
     });
+    if (resource !== currentResourceRef.current) return;
     if (!result.ok) {
       setError(result.error);
       return;
     }
     setSuccess(isUpdate ? "Updated." : "Created.");
     await loadList();
+    if (resource !== currentResourceRef.current) return;
     if (!isUpdate && result.data && typeof result.data === "object" && result.data !== null) {
       startEdit(result.data as ResourceRecord);
     }

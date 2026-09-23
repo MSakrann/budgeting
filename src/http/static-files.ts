@@ -23,6 +23,11 @@ function safeJoin(root: string, requestPath: string): string | null {
   return candidate;
 }
 
+function looksLikeFilePath(pathname: string): boolean {
+  const lastSegment = pathname.split("/").filter(Boolean).pop() ?? "";
+  return lastSegment.includes(".");
+}
+
 function acceptsHtml(accept: string | undefined): boolean {
   if (!accept) return false;
   return accept.split(",").some((part) => {
@@ -46,7 +51,11 @@ export function createStaticApp(clientDist: string): Hono {
         headers: { "content-type": MIME[extname(filePath)] ?? "application/octet-stream" },
       });
     }
-    // SPA fallback only for navigation requests that accept HTML — not missing assets.
+    // Missing file-like paths always 404 — never SPA-fallback even when Accept includes HTML.
+    if (looksLikeFilePath(c.req.path)) {
+      return c.text("Not found", 404);
+    }
+    // SPA fallback only for extension-less navigation routes that accept HTML.
     if (acceptsHtml(c.req.header("accept"))) {
       const indexPath = join(clientDist, "index.html");
       if (existsSync(indexPath)) {
