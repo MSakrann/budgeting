@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { handle } from "hono/vercel";
-import { bootstrapApp } from "../dist/runtime.js";
+import { bootstrapApp } from "../src/runtime.js";
 
 export const config = {
   runtime: "nodejs",
