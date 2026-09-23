@@ -39,6 +39,7 @@ export async function seed(
   store: Store,
   env: NodeJS.ProcessEnv,
   readRows: () => Promise<ConsumptionRow[]>,
+  options: { skipConsumptionImport?: boolean } = {},
 ): Promise<void> {
   await ensureSeedUser(store, {
     email: env.EDITOR_ONE_EMAIL,
@@ -64,6 +65,7 @@ export async function seed(
     await store.upsertRates({ year: 2026, usdToEgp: 52.6, eurToEgp: 61 });
   }
 
+  if (options.skipConsumptionImport) return;
   if (await store.hasImport(CONSUMPTION_IMPORT_KEY)) return;
 
   let rows: ConsumptionRow[];

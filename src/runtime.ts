@@ -16,6 +16,13 @@ export function resolveSessionSecret(env: NodeJS.ProcessEnv = process.env): stri
   return "dev-session-secret";
 }
 
+/** Skip the Excel workbook import on Vercel unless SEED_CONSUMPTION=true (keeps cold starts under the function timeout). */
+export function shouldSkipConsumptionImport(env: NodeJS.ProcessEnv = process.env): boolean {
+  if (env.SEED_CONSUMPTION === "true") return false;
+  if (env.SEED_CONSUMPTION === "false") return true;
+  return Boolean(env.VERCEL);
+}
+
 export async function openStore(env: NodeJS.ProcessEnv = process.env): Promise<Store> {
   const databaseUrl = env.DATABASE_URL;
   if (!databaseUrl) {
@@ -28,8 +35,8 @@ export async function openStore(env: NodeJS.ProcessEnv = process.env): Promise<S
   const sql = postgres(databaseUrl, {
     max: serverless ? 1 : 10,
     idle_timeout: serverless ? 20 : 0,
-    connect_timeout: 10,
-    prepare: serverless ? false : true,
+    connect_timeout: serverless ? 10 : 30,
+    prepare: !serverless,
   });
   return createPostgresStore(sql);
 }
@@ -40,7 +47,9 @@ export async function seedStore(
 ): Promise<void> {
   const workbookPath =
     env.CONSUMPTION_XLSX ?? join(process.cwd(), "references", "Data - List of POs 2026.xlsx");
-  await seed(store, env, () => readConsumptionWorkbook(workbookPath));
+  await seed(store, env, () => readConsumptionWorkbook(workbookPath), {
+    skipConsumptionImport: shouldSkipConsumptionImport(env),
+  });
 }
 
 /** Ready Hono app: store opened, seed applied, routes mounted. */
