@@ -731,12 +731,30 @@ function ResourcePage({ config }: { config: ResourceConfig }) {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const currentResourceRef = useRef(config.name);
+  const pageEpochRef = useRef(0);
+  const listOpRef = useRef(0);
+  const writeOpRef = useRef(0);
   currentResourceRef.current = config.name;
+
+  function isStaleOp(
+    resource: string,
+    epoch: number,
+    opId: number,
+    opRef: { current: number },
+  ): boolean {
+    return (
+      resource !== currentResourceRef.current ||
+      epoch !== pageEpochRef.current ||
+      opId !== opRef.current
+    );
+  }
 
   async function loadList() {
     const resource = config.name;
+    const epoch = pageEpochRef.current;
+    const opId = ++listOpRef.current;
     const result = await api<ResourceRecord[]>(config.listPath);
-    if (resource !== currentResourceRef.current) return;
+    if (isStaleOp(resource, epoch, opId, listOpRef)) return;
     if (!result.ok) {
       setListError(result.error);
       setRecords([]);
@@ -747,6 +765,7 @@ function ResourcePage({ config }: { config: ResourceConfig }) {
   }
 
   useEffect(() => {
+    pageEpochRef.current += 1;
     currentResourceRef.current = config.name;
     setEditingId(null);
     setValues(emptyValues(config.fields));
@@ -782,10 +801,12 @@ function ResourcePage({ config }: { config: ResourceConfig }) {
     setError(null);
     setSuccess(null);
     const resource = config.name;
+    const epoch = pageEpochRef.current;
+    const opId = ++writeOpRef.current;
     setDeleting(true);
     try {
       const result = await api(config.deletePath(record), { method: "DELETE" });
-      if (resource !== currentResourceRef.current) return;
+      if (isStaleOp(resource, epoch, opId, writeOpRef)) return;
       if (!result.ok) {
         setError(result.error);
         return;
@@ -795,8 +816,9 @@ function ResourcePage({ config }: { config: ResourceConfig }) {
       }
       setSuccess("Deleted.");
       await loadList();
+      if (isStaleOp(resource, epoch, opId, writeOpRef)) return;
     } finally {
-      if (resource === currentResourceRef.current) setDeleting(false);
+      if (!isStaleOp(resource, epoch, opId, writeOpRef)) setDeleting(false);
     }
   }
 
@@ -806,6 +828,8 @@ function ResourcePage({ config }: { config: ResourceConfig }) {
     setError(null);
     setSuccess(null);
     const resource = config.name;
+    const epoch = pageEpochRef.current;
+    const opId = ++writeOpRef.current;
     const body = config.transform(values);
     const isUpdate = editingId !== null || !config.createPath;
     const path = isUpdate
@@ -818,19 +842,19 @@ function ResourcePage({ config }: { config: ResourceConfig }) {
         method,
         body: JSON.stringify(body),
       });
-      if (resource !== currentResourceRef.current) return;
+      if (isStaleOp(resource, epoch, opId, writeOpRef)) return;
       if (!result.ok) {
         setError(result.error);
         return;
       }
       setSuccess(isUpdate ? "Updated." : "Created.");
       await loadList();
-      if (resource !== currentResourceRef.current) return;
+      if (isStaleOp(resource, epoch, opId, writeOpRef)) return;
       if (!isUpdate && result.data && typeof result.data === "object" && result.data !== null) {
         startEdit(result.data as ResourceRecord);
       }
     } finally {
-      if (resource === currentResourceRef.current) setSaving(false);
+      if (!isStaleOp(resource, epoch, opId, writeOpRef)) setSaving(false);
     }
   }
 

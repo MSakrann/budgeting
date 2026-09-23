@@ -15,12 +15,24 @@ const MIME: Record<string, string> = {
   ".woff2": "font/woff2",
 };
 
-function safeJoin(root: string, requestPath: string): string | null {
-  const decoded = decodeURIComponent(requestPath.split("?")[0] ?? "/");
+type SafeJoinResult =
+  | { kind: "ok"; path: string }
+  | { kind: "invalid-uri" }
+  | { kind: "outside-root" };
+
+function safeJoin(root: string, requestPath: string): SafeJoinResult {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(requestPath.split("?")[0] ?? "/");
+  } catch {
+    return { kind: "invalid-uri" };
+  }
   const relative = decoded === "/" ? "index.html" : decoded.replace(/^\//, "");
   const candidate = normalize(join(root, relative));
-  if (!candidate.startsWith(root + sep) && candidate !== root) return null;
-  return candidate;
+  if (!candidate.startsWith(root + sep) && candidate !== root) {
+    return { kind: "outside-root" };
+  }
+  return { kind: "ok", path: candidate };
 }
 
 function looksLikeFilePath(pathname: string): boolean {
@@ -43,12 +55,15 @@ export function createStaticApp(clientDist: string): Hono {
     if (!existsSync(clientDist)) {
       return c.text("Client build missing. Run vite build.", 404);
     }
-    const filePath = safeJoin(clientDist, c.req.path);
-    if (filePath && existsSync(filePath)) {
-      const data = await readFile(filePath);
+    const joined = safeJoin(clientDist, c.req.path);
+    if (joined.kind === "invalid-uri") {
+      return c.text("Bad request", 400);
+    }
+    if (joined.kind === "ok" && existsSync(joined.path)) {
+      const data = await readFile(joined.path);
       return new Response(data, {
         status: 200,
-        headers: { "content-type": MIME[extname(filePath)] ?? "application/octet-stream" },
+        headers: { "content-type": MIME[extname(joined.path)] ?? "application/octet-stream" },
       });
     }
     // Missing file-like paths always 404 — never SPA-fallback even when Accept includes HTML.

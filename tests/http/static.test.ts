@@ -75,6 +75,16 @@ describe("static files", () => {
     expect(await response.text()).not.toMatch(/DOCTYPE/i);
   });
 
+  it("returns 400 for malformed URI paths", async () => {
+    const root = mkdtempSync(join(tmpdir(), "budget-static-"));
+    writeFileSync(join(root, "index.html"), "<!DOCTYPE html><html></html>");
+    const app = createStaticApp(root);
+    const response = await app.request("/bad%ZZ", {
+      headers: { accept: "text/html" },
+    });
+    expect(response.status).toBe(400);
+  });
+
   it("falls back to index.html for HTML navigation to unknown routes", async () => {
     const root = mkdtempSync(join(tmpdir(), "budget-static-"));
     const html = "<!DOCTYPE html><html><body>app</body></html>";
