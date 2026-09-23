@@ -151,4 +151,51 @@ describe.each([
       }),
     ).rejects.toThrow(/does not exist/);
   });
+
+  it("rejects GBP currency and bogus status", async () => {
+    const store = await freshStore();
+    await expect(
+      store.createBudgetLine({
+        year: 2026,
+        projectTitle: "Foreign",
+        kind: "capex",
+        currency: "GBP" as never,
+        amount: 100,
+      }),
+    ).rejects.toThrow(/Invalid currency/);
+    await expect(
+      store.createPurchaseRequest({
+        title: "Bad status",
+        year: 2026,
+        amount: 10,
+        currency: "EGP",
+        budgetLineId: null,
+        status: "Bogus" as never,
+      }),
+    ).rejects.toThrow(/Invalid status/);
+  });
+
+  it("ignores a client-supplied id on create", async () => {
+    const store = await freshStore();
+    const planted = "11111111-1111-1111-1111-111111111111";
+    const line = await store.createBudgetLine({
+      id: planted,
+      year: 2026,
+      projectTitle: "Owned",
+      kind: "capex",
+      currency: "EGP",
+      amount: 100,
+    } as never);
+    expect(line.id).not.toBe(planted);
+    expect(line.id.length).toBeGreaterThan(0);
+  });
+
+  it("rejects non-positive or non-numeric rates on upsert", async () => {
+    const store = await freshStore();
+    await expect(store.upsertRates({ year: 2026, usdToEgp: 0, eurToEgp: 61 })).rejects.toThrow(/USD/);
+    await expect(store.upsertRates({ year: 2026.5, usdToEgp: 1, eurToEgp: 1 })).rejects.toThrow(/Year/);
+    await expect(
+      store.upsertRates({ year: 2026, usdToEgp: Number.NaN, eurToEgp: 61 }),
+    ).rejects.toThrow(/USD/);
+  });
 });

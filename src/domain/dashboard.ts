@@ -13,7 +13,9 @@ function ratesFor(ledger: Ledger, year: number): YearRates {
   return rates;
 }
 
+/** EGP never needs a rates row; only USD/EUR conversion looks up year rates. */
 function money(ledger: Ledger, amount: number, currency: Currency, year: number): number {
+  if (currency === "EGP") return amount;
   return toEgp(amount, currency, ratesFor(ledger, year));
 }
 

@@ -50,4 +50,9 @@ describe("seed", () => {
     ).rejects.toThrow("Consumption per PO sheet is missing");
     expect(await store.hasImport("consumption-2026")).toBe(false);
   });
+
+  it("fails loudly when required user env vars are missing", async () => {
+    const store = createMemoryStore();
+    await expect(seed(store, {}, async () => rows)).rejects.toThrow(/Missing required seed env/);
+  });
 });

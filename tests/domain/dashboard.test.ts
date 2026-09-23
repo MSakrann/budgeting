@@ -73,4 +73,33 @@ describe("buildDashboard", () => {
     expect(buildDashboard(ledger(), 2027).submittedInvoicesEgp).toBe(50);
     expect(buildDashboard(ledger(), 2027).capitalizationEgp).toBe(600);
   });
+
+  it("does not require a rates row for EGP in-progress PRs in a year without rates", () => {
+    const dash = buildDashboard(
+      ledger({
+        purchaseRequests: [
+          {
+            id: "pr1",
+            title: "Open PR",
+            year: 2026,
+            amount: 100,
+            currency: "EGP",
+            budgetLineId: "b1",
+            status: "In progress",
+          },
+          {
+            id: "pr2027",
+            title: "2027 EGP PR",
+            year: 2027,
+            amount: 250,
+            currency: "EGP",
+            budgetLineId: null,
+            status: "In progress",
+          },
+        ],
+      }),
+      2026,
+    );
+    expect(dash.inProgressPrs).toEqual({ count: 2, egp: 350 });
+  });
 });

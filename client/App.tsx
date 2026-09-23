@@ -48,7 +48,7 @@ type DashboardData = {
   uncommittedEgp: number;
   overrunEgp: number;
   purchaseOrders: DashboardPo[];
-  pipelineIecs: { id: string; title: string; egp: number; tier: "Mini" | "Full" }[];
+  pipelineIecs: { id: string; title: string; egp: number; tier: "mini" | "full" }[];
   pipelinePrs: { id: string; title: string; egp: number }[];
 };
 
@@ -61,7 +61,7 @@ type Page =
   | "pos"
   | "invoices";
 
-type FieldType = "text" | "number" | "select" | "nullable-text" | "month";
+type FieldType = "text" | "number" | "select" | "nullable-text" | "month" | "fk";
 
 type FieldConfig = {
   name: string;
@@ -69,6 +69,8 @@ type FieldConfig = {
   type: FieldType;
   options?: string[];
   optional?: boolean;
+  fkListPath?: string;
+  fkLabel?: (record: ResourceRecord) => string;
 };
 
 type ResourceRecord = Record<string, unknown>;
@@ -142,7 +144,7 @@ const RESOURCE_CONFIG: Record<Exclude<Page, "dashboard">, ResourceConfig> = {
       currency: String(record.currency ?? "EGP"),
       amount: String(record.amount ?? ""),
     }),
-    rowLabel: (record) => `${record.year} · ${record.projectTitle} · ${record.amount} ${record.currency}`,
+    rowLabel: (record) => `${record.year} · ${record.projectTitle} · ${record.amount} ${record.currency} · ${record.id}`,
     recordKey: (record) => String(record.id),
     deletePath: (record) => `/api/budget-lines/${String(record.id)}`,
   },
@@ -157,7 +159,14 @@ const RESOURCE_CONFIG: Record<Exclude<Page, "dashboard">, ResourceConfig> = {
       { name: "year", label: "Year", type: "number" },
       { name: "amount", label: "Amount", type: "number" },
       { name: "currency", label: "Currency", type: "select", options: CURRENCIES },
-      { name: "budgetLineId", label: "Budget line ID", type: "nullable-text", optional: true },
+      {
+        name: "budgetLineId",
+        label: "Budget line",
+        type: "fk",
+        optional: true,
+        fkListPath: "/api/budget-lines",
+        fkLabel: (record) => `${record.year} · ${record.projectTitle} · ${record.id}`,
+      },
       { name: "status", label: "Status", type: "select", options: STATUSES },
     ],
     transform: (values) => ({
@@ -176,7 +185,7 @@ const RESOURCE_CONFIG: Record<Exclude<Page, "dashboard">, ResourceConfig> = {
       budgetLineId: nullableString(record.budgetLineId),
       status: String(record.status ?? "Draft"),
     }),
-    rowLabel: (record) => `${record.year} · ${record.title} · ${record.status}`,
+    rowLabel: (record) => `${record.year} · ${record.title} · ${record.status} · ${record.id}`,
     recordKey: (record) => String(record.id),
     deletePath: (record) => `/api/purchase-requests/${String(record.id)}`,
   },
@@ -196,7 +205,14 @@ const RESOURCE_CONFIG: Record<Exclude<Page, "dashboard">, ResourceConfig> = {
       { name: "budgetAmount", label: "Budget amount", type: "number" },
       { name: "requestedAmount", label: "Requested amount", type: "number" },
       { name: "note", label: "Note", type: "nullable-text", optional: true },
-      { name: "purchaseRequestId", label: "PR ID", type: "nullable-text", optional: true },
+      {
+        name: "purchaseRequestId",
+        label: "Purchase request",
+        type: "fk",
+        optional: true,
+        fkListPath: "/api/purchase-requests",
+        fkLabel: (record) => `${record.year} · ${record.title} · ${record.id}`,
+      },
       { name: "status", label: "Status", type: "select", options: STATUSES },
     ],
     transform: (values) => ({
@@ -225,7 +241,7 @@ const RESOURCE_CONFIG: Record<Exclude<Page, "dashboard">, ResourceConfig> = {
       purchaseRequestId: nullableString(record.purchaseRequestId),
       status: String(record.status ?? "Draft"),
     }),
-    rowLabel: (record) => `${record.year} · ${record.title} · ${record.status}`,
+    rowLabel: (record) => `${record.year} · ${record.title} · ${record.status} · ${record.id}`,
     recordKey: (record) => String(record.id),
     deletePath: (record) => `/api/iecs/${String(record.id)}`,
   },
@@ -243,7 +259,14 @@ const RESOURCE_CONFIG: Record<Exclude<Page, "dashboard">, ResourceConfig> = {
       { name: "contractAmount", label: "Contract amount", type: "nullable-text", optional: true },
       { name: "currency", label: "Currency", type: "select", options: ["", ...CURRENCIES], optional: true },
       { name: "kind", label: "Kind", type: "select", options: KINDS },
-      { name: "budgetLineId", label: "Budget line ID", type: "nullable-text", optional: true },
+      {
+        name: "budgetLineId",
+        label: "Budget line",
+        type: "fk",
+        optional: true,
+        fkListPath: "/api/budget-lines",
+        fkLabel: (record) => `${record.year} · ${record.projectTitle} · ${record.id}`,
+      },
       { name: "capitalizationStart", label: "Capitalization start (YYYY-MM)", type: "month", optional: true },
       { name: "capitalizationEnd", label: "Capitalization end (YYYY-MM)", type: "month", optional: true },
     ],
@@ -271,7 +294,7 @@ const RESOURCE_CONFIG: Record<Exclude<Page, "dashboard">, ResourceConfig> = {
       capitalizationStart: formatMonth(record.capitalizationStart),
       capitalizationEnd: formatMonth(record.capitalizationEnd),
     }),
-    rowLabel: (record) => `${record.number} · ${record.supplier} · ${record.budgetYear}`,
+    rowLabel: (record) => `${record.number} · ${record.supplier} · ${record.budgetYear} · ${record.id}`,
     recordKey: (record) => String(record.id),
     deletePath: (record) => `/api/purchase-orders/${String(record.id)}`,
   },
@@ -282,7 +305,13 @@ const RESOURCE_CONFIG: Record<Exclude<Page, "dashboard">, ResourceConfig> = {
     createPath: "/api/invoices",
     updatePath: (_values, editingId) => `/api/invoices/${editingId}`,
     fields: [
-      { name: "purchaseOrderId", label: "Purchase order ID", type: "text" },
+      {
+        name: "purchaseOrderId",
+        label: "Purchase order",
+        type: "fk",
+        fkListPath: "/api/purchase-orders",
+        fkLabel: (record) => `${record.number} · ${record.supplier} · ${record.id}`,
+      },
       { name: "amount", label: "Amount", type: "number" },
       { name: "currency", label: "Currency", type: "select", options: CURRENCIES },
       { name: "submissionDate", label: "Submission date", type: "text" },
@@ -310,7 +339,8 @@ const RESOURCE_CONFIG: Record<Exclude<Page, "dashboard">, ResourceConfig> = {
     }),
     rowLabel: (record) =>
       `${record.submissionDate} · ${record.amount} ${record.currency}` +
-      (record.receiptNumber ? " · cashed out" : " · submitted"),
+      (record.receiptNumber ? " · cashed out" : " · submitted") +
+      ` · ${record.id}`,
     recordKey: (record) => String(record.id),
     deletePath: (record) => `/api/invoices/${String(record.id)}`,
   },
@@ -717,7 +747,7 @@ function Dashboard() {
                 <div className="pipeline-item" key={iec.id}>
                   <div>
                     <strong>{iec.title}</strong>
-                    <span className="badge">{iec.tier}</span>
+                    <span className="badge">{iec.tier === "mini" ? "Mini" : "Full"}</span>
                   </div>
                   <div>{formatEgp(iec.egp)}</div>
                 </div>
@@ -744,6 +774,7 @@ function Dashboard() {
 
 function ResourcePage({ config }: { config: ResourceConfig }) {
   const [records, setRecords] = useState<ResourceRecord[]>([]);
+  const [fkOptions, setFkOptions] = useState<Record<string, ResourceRecord[]>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
   const [values, setValues] = useState<Record<string, string>>(() => emptyValues(config.fields));
   const [error, setError] = useState<string | null>(null);
@@ -770,6 +801,21 @@ function ResourcePage({ config }: { config: ResourceConfig }) {
     );
   }
 
+  async function loadFkOptions(resource: string, epoch: number, opId: number) {
+    const fkFields = config.fields.filter((field) => field.type === "fk" && field.fkListPath);
+    const next: Record<string, ResourceRecord[]> = {};
+    await Promise.all(
+      fkFields.map(async (field) => {
+        const result = await api<ResourceRecord[]>(field.fkListPath!);
+        if (isStaleOp(resource, epoch, opId, listOpRef)) return;
+        if (result.ok) next[field.name] = result.data;
+        else next[field.name] = [];
+      }),
+    );
+    if (isStaleOp(resource, epoch, opId, listOpRef)) return;
+    setFkOptions(next);
+  }
+
   async function loadList() {
     const resource = config.name;
     const epoch = pageEpochRef.current;
@@ -783,6 +829,7 @@ function ResourcePage({ config }: { config: ResourceConfig }) {
     }
     setListError(null);
     setRecords(result.data);
+    await loadFkOptions(resource, epoch, opId);
   }
 
   useEffect(() => {
@@ -794,6 +841,7 @@ function ResourcePage({ config }: { config: ResourceConfig }) {
     setSuccess(null);
     setListError(null);
     setRecords([]);
+    setFkOptions({});
     setSaving(false);
     setDeleting(false);
     void loadList();
@@ -929,7 +977,7 @@ function ResourcePage({ config }: { config: ResourceConfig }) {
           {config.fields.map((field) => (
             <label key={field.name}>
               {field.label}
-              {field.type === "select" ? (
+              {field.type === "select" || field.type === "fk" ? (
                 <select
                   value={values[field.name] ?? ""}
                   onChange={(event) =>
@@ -937,11 +985,26 @@ function ResourcePage({ config }: { config: ResourceConfig }) {
                   }
                   required={!field.optional}
                 >
-                  {(field.options ?? []).map((option) => (
-                    <option key={option || "blank"} value={option}>
-                      {option === "" ? "—" : option}
-                    </option>
-                  ))}
+                  {field.type === "fk" ? (
+                    <>
+                      {field.optional && <option value="">—</option>}
+                      {(fkOptions[field.name] ?? []).map((option) => {
+                        const value = String(option.id ?? "");
+                        const label = field.fkLabel?.(option) ?? value;
+                        return (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        );
+                      })}
+                    </>
+                  ) : (
+                    (field.options ?? []).map((option) => (
+                      <option key={option || "blank"} value={option}>
+                        {option === "" ? "—" : option}
+                      </option>
+                    ))
+                  )}
                 </select>
               ) : (
                 <input

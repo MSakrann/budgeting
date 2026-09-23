@@ -4,7 +4,8 @@ export type Currency = (typeof CURRENCIES)[number];
 export const STATUSES = ["Draft", "In progress", "Approved", "Rejected", "Closed"] as const;
 export type RecordStatus = (typeof STATUSES)[number];
 
-export type SpendKind = "capex" | "opex";
+export const SPEND_KINDS = ["capex", "opex"] as const;
+export type SpendKind = (typeof SPEND_KINDS)[number];
 
 export type YearRates = { year: number; usdToEgp: number; eurToEgp: number };
 

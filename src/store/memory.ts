@@ -1,8 +1,14 @@
 import {
+  assertCurrencyEnum,
+  assertNullableCurrencyEnum,
+  assertSpendKindEnum,
+  assertStatusEnum,
   validateAmount,
   validateCurrency,
   validateInvoiceDocuments,
   validatePeriod,
+  validateRates,
+  validateSubmissionDate,
 } from "../domain/validate.js";
 import type {
   BudgetLine,
@@ -25,6 +31,11 @@ function ratesForYear(rates: YearRates[], year: number): YearRates | undefined {
   return rates.find((r) => r.year === year);
 }
 
+function withNewId<T extends object>(input: T): T & { id: string } {
+  const { id: _ignored, ...rest } = input as T & { id?: string };
+  return { ...(rest as T), id: crypto.randomUUID() };
+}
+
 function assertMoney(
   amount: number | null,
   currency: Currency | null,
@@ -35,25 +46,36 @@ function assertMoney(
 }
 
 function assertBudgetLine(input: Omit<BudgetLine, "id">, rates: YearRates | undefined): void {
+  assertSpendKindEnum(input.kind);
+  assertCurrencyEnum(input.currency);
   assertMoney(input.amount, input.currency, rates);
 }
 
 function assertPurchaseRequest(input: Omit<PurchaseRequest, "id">, rates: YearRates | undefined): void {
+  assertCurrencyEnum(input.currency);
+  assertStatusEnum(input.status);
   assertMoney(input.amount, input.currency, rates);
 }
 
 function assertIec(input: Omit<Iec, "id">, rates: YearRates | undefined): void {
+  assertSpendKindEnum(input.kind);
+  assertCurrencyEnum(input.currency);
+  assertStatusEnum(input.status);
   assertOk(validateAmount(input.budgetAmount));
   assertOk(validateAmount(input.requestedAmount));
   assertOk(validateCurrency(input.currency, rates));
 }
 
 function assertPurchaseOrder(input: Omit<PurchaseOrder, "id">, rates: YearRates | undefined): void {
+  assertSpendKindEnum(input.kind);
+  assertNullableCurrencyEnum(input.currency);
   assertOk(validatePeriod(input.capitalizationStart, input.capitalizationEnd));
   assertMoney(input.contractAmount, input.currency, rates);
 }
 
 function assertInvoice(input: Omit<Invoice, "id">, rates: YearRates | undefined): void {
+  assertCurrencyEnum(input.currency);
+  assertOk(validateSubmissionDate(input.submissionDate));
   assertOk(validateInvoiceDocuments(input.receiptNumber, input.facReference));
   assertMoney(input.amount, input.currency, rates);
 }
@@ -143,6 +165,7 @@ export function createMemoryStore(): Store {
     },
 
     async upsertRates(input) {
+      assertOk(validateRates(input));
       const stored = cloneRates(input);
       const index = rates.findIndex((r) => r.year === stored.year);
       if (index >= 0) rates[index] = stored;
@@ -171,7 +194,7 @@ export function createMemoryStore(): Store {
 
     async createBudgetLine(input) {
       assertBudgetLine(input, ratesForYear(rates, input.year));
-      const row = cloneBudgetLine({ id: crypto.randomUUID(), ...input });
+      const row = cloneBudgetLine(withNewId(input));
       budgetLines.push(row);
       return cloneBudgetLine(row);
     },
@@ -197,7 +220,7 @@ export function createMemoryStore(): Store {
     async createPurchaseRequest(input) {
       assertPurchaseRequest(input, ratesForYear(rates, input.year));
       requireBudgetLine(input.budgetLineId);
-      const row = clonePurchaseRequest({ id: crypto.randomUUID(), ...input });
+      const row = clonePurchaseRequest(withNewId(input));
       purchaseRequests.push(row);
       return clonePurchaseRequest(row);
     },
@@ -221,7 +244,7 @@ export function createMemoryStore(): Store {
     async createIec(input) {
       assertIec(input, ratesForYear(rates, input.year));
       requirePurchaseRequest(input.purchaseRequestId);
-      const row = cloneIec({ id: crypto.randomUUID(), ...input });
+      const row = cloneIec(withNewId(input));
       iecs.push(row);
       return cloneIec(row);
     },
@@ -247,7 +270,7 @@ export function createMemoryStore(): Store {
       if (purchaseOrders.some((r) => r.number === input.number)) {
         throw new Error("Purchase order number already exists");
       }
-      const row = clonePurchaseOrder({ id: crypto.randomUUID(), ...input });
+      const row = clonePurchaseOrder(withNewId(input));
       purchaseOrders.push(row);
       return clonePurchaseOrder(row);
     },
@@ -274,7 +297,7 @@ export function createMemoryStore(): Store {
     async createInvoice(input) {
       const po = requirePurchaseOrder(input.purchaseOrderId);
       assertInvoice(input, ratesForYear(rates, po.budgetYear));
-      const row = cloneInvoice({ id: crypto.randomUUID(), ...input });
+      const row = cloneInvoice(withNewId(input));
       invoices.push(row);
       return cloneInvoice(row);
     },

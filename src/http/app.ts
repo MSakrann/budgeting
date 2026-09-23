@@ -4,11 +4,27 @@ import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { verifyPassword } from "../auth/password.js";
 import { readSession, signSession } from "../auth/session.js";
 import { buildDashboard } from "../domain/dashboard.js";
+import { validateRates } from "../domain/validate.js";
 import type { Ledger } from "../domain/types.js";
 import type { Store, User } from "../store/types.js";
 
 const COOKIE_NAME = "budget_session";
-const COOKIE_OPTIONS = { httpOnly: true, sameSite: "Lax" as const, path: "/" };
+
+function cookieOptions(): {
+  httpOnly: true;
+  sameSite: "Lax";
+  path: string;
+  secure?: boolean;
+} {
+  const secure =
+    process.env.NODE_ENV === "production" || process.env.COOKIE_SECURE === "true";
+  return {
+    httpOnly: true,
+    sameSite: "Lax",
+    path: "/",
+    ...(secure ? { secure: true } : {}),
+  };
+}
 
 type Variables = { user: User };
 type AppEnv = { Variables: Variables };
@@ -16,6 +32,18 @@ type AppContext = Context<AppEnv>;
 
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : "Unknown error";
+}
+
+async function readJsonBody<T>(c: AppContext): Promise<T | Response> {
+  try {
+    return (await c.req.json()) as T;
+  } catch {
+    return c.json({ error: "Invalid JSON" }, 400);
+  }
+}
+
+function isResponse(value: unknown): value is Response {
+  return value instanceof Response;
 }
 
 /** Current calendar year plus rate, budget-line, PR, IEC, PO budget, and invoice submission years. */
@@ -72,7 +100,9 @@ export function createApp(store: Store, sessionSecret: string): Hono<AppEnv> {
   });
 
   app.post("/api/session", async (c) => {
-    const body = await c.req.json<{ email?: string; password?: string }>();
+    const bodyOrError = await readJsonBody<{ email?: string; password?: string }>(c);
+    if (isResponse(bodyOrError)) return bodyOrError;
+    const body = bodyOrError;
     if (!body.email || !body.password) {
       return c.json({ error: "Unauthorized" }, 401);
     }
@@ -84,7 +114,7 @@ export function createApp(store: Store, sessionSecret: string): Hono<AppEnv> {
       { email: user.email, role: user.role, name: user.name },
       sessionSecret,
     );
-    setCookie(c, COOKIE_NAME, token, COOKIE_OPTIONS);
+    setCookie(c, COOKIE_NAME, token, cookieOptions());
     return c.json({ email: user.email, role: user.role, name: user.name });
   });
 
@@ -145,9 +175,18 @@ export function createApp(store: Store, sessionSecret: string): Hono<AppEnv> {
 
   app.put("/api/rates/:year", async (c) => {
     const year = Number(c.req.param("year"));
-    const body = await c.req.json<{ usdToEgp: number; eurToEgp: number }>();
+    if (!Number.isInteger(year) || !Number.isFinite(year)) {
+      return c.json({ error: "Year must be an integer" }, 400);
+    }
+    const bodyOrError = await readJsonBody<{ usdToEgp?: unknown; eurToEgp?: unknown }>(c);
+    if (isResponse(bodyOrError)) return bodyOrError;
+    const body = bodyOrError;
+    const usdToEgp = typeof body.usdToEgp === "number" ? body.usdToEgp : Number(body.usdToEgp);
+    const eurToEgp = typeof body.eurToEgp === "number" ? body.eurToEgp : Number(body.eurToEgp);
+    const ratesError = validateRates({ year, usdToEgp, eurToEgp });
+    if (ratesError) return c.json({ error: ratesError }, 400);
     try {
-      const rates = await store.upsertRates({ year, usdToEgp: body.usdToEgp, eurToEgp: body.eurToEgp });
+      const rates = await store.upsertRates({ year, usdToEgp, eurToEgp });
       return c.json(rates);
     } catch (err) {
       return c.json({ error: errorMessage(err) }, 400);
@@ -155,18 +194,20 @@ export function createApp(store: Store, sessionSecret: string): Hono<AppEnv> {
   });
 
   app.post("/api/budget-lines", async (c) => {
-    const body = await c.req.json();
+    const bodyOrError = await readJsonBody(c);
+    if (isResponse(bodyOrError)) return bodyOrError;
     try {
-      return c.json(await store.createBudgetLine(body));
+      return c.json(await store.createBudgetLine(bodyOrError as never));
     } catch (err) {
       return c.json({ error: errorMessage(err) }, 400);
     }
   });
 
   app.put("/api/budget-lines/:id", async (c) => {
-    const body = await c.req.json();
+    const bodyOrError = await readJsonBody(c);
+    if (isResponse(bodyOrError)) return bodyOrError;
     try {
-      return c.json(await store.updateBudgetLine(c.req.param("id"), body));
+      return c.json(await store.updateBudgetLine(c.req.param("id"), bodyOrError as never));
     } catch (err) {
       return c.json({ error: errorMessage(err) }, 400);
     }
@@ -182,18 +223,20 @@ export function createApp(store: Store, sessionSecret: string): Hono<AppEnv> {
   });
 
   app.post("/api/purchase-requests", async (c) => {
-    const body = await c.req.json();
+    const bodyOrError = await readJsonBody(c);
+    if (isResponse(bodyOrError)) return bodyOrError;
     try {
-      return c.json(await store.createPurchaseRequest(body));
+      return c.json(await store.createPurchaseRequest(bodyOrError as never));
     } catch (err) {
       return c.json({ error: errorMessage(err) }, 400);
     }
   });
 
   app.put("/api/purchase-requests/:id", async (c) => {
-    const body = await c.req.json();
+    const bodyOrError = await readJsonBody(c);
+    if (isResponse(bodyOrError)) return bodyOrError;
     try {
-      return c.json(await store.updatePurchaseRequest(c.req.param("id"), body));
+      return c.json(await store.updatePurchaseRequest(c.req.param("id"), bodyOrError as never));
     } catch (err) {
       return c.json({ error: errorMessage(err) }, 400);
     }
@@ -209,18 +252,20 @@ export function createApp(store: Store, sessionSecret: string): Hono<AppEnv> {
   });
 
   app.post("/api/iecs", async (c) => {
-    const body = await c.req.json();
+    const bodyOrError = await readJsonBody(c);
+    if (isResponse(bodyOrError)) return bodyOrError;
     try {
-      return c.json(await store.createIec(body));
+      return c.json(await store.createIec(bodyOrError as never));
     } catch (err) {
       return c.json({ error: errorMessage(err) }, 400);
     }
   });
 
   app.put("/api/iecs/:id", async (c) => {
-    const body = await c.req.json();
+    const bodyOrError = await readJsonBody(c);
+    if (isResponse(bodyOrError)) return bodyOrError;
     try {
-      return c.json(await store.updateIec(c.req.param("id"), body));
+      return c.json(await store.updateIec(c.req.param("id"), bodyOrError as never));
     } catch (err) {
       return c.json({ error: errorMessage(err) }, 400);
     }
@@ -236,18 +281,20 @@ export function createApp(store: Store, sessionSecret: string): Hono<AppEnv> {
   });
 
   app.post("/api/purchase-orders", async (c) => {
-    const body = await c.req.json();
+    const bodyOrError = await readJsonBody(c);
+    if (isResponse(bodyOrError)) return bodyOrError;
     try {
-      return c.json(await store.createPurchaseOrder(body));
+      return c.json(await store.createPurchaseOrder(bodyOrError as never));
     } catch (err) {
       return c.json({ error: errorMessage(err) }, 400);
     }
   });
 
   app.put("/api/purchase-orders/:id", async (c) => {
-    const body = await c.req.json();
+    const bodyOrError = await readJsonBody(c);
+    if (isResponse(bodyOrError)) return bodyOrError;
     try {
-      return c.json(await store.updatePurchaseOrder(c.req.param("id"), body));
+      return c.json(await store.updatePurchaseOrder(c.req.param("id"), bodyOrError as never));
     } catch (err) {
       return c.json({ error: errorMessage(err) }, 400);
     }
@@ -263,18 +310,20 @@ export function createApp(store: Store, sessionSecret: string): Hono<AppEnv> {
   });
 
   app.post("/api/invoices", async (c) => {
-    const body = await c.req.json();
+    const bodyOrError = await readJsonBody(c);
+    if (isResponse(bodyOrError)) return bodyOrError;
     try {
-      return c.json(await store.createInvoice(body));
+      return c.json(await store.createInvoice(bodyOrError as never));
     } catch (err) {
       return c.json({ error: errorMessage(err) }, 400);
     }
   });
 
   app.put("/api/invoices/:id", async (c) => {
-    const body = await c.req.json();
+    const bodyOrError = await readJsonBody(c);
+    if (isResponse(bodyOrError)) return bodyOrError;
     try {
-      return c.json(await store.updateInvoice(c.req.param("id"), body));
+      return c.json(await store.updateInvoice(c.req.param("id"), bodyOrError as never));
     } catch (err) {
       return c.json({ error: errorMessage(err) }, 400);
     }

@@ -4,10 +4,16 @@ import { drizzle as drizzlePostgres } from "drizzle-orm/postgres-js";
 import type { PGlite } from "@electric-sql/pglite";
 import type postgres from "postgres";
 import {
+  assertCurrencyEnum,
+  assertNullableCurrencyEnum,
+  assertSpendKindEnum,
+  assertStatusEnum,
   validateAmount,
   validateCurrency,
   validateInvoiceDocuments,
   validatePeriod,
+  validateRates,
+  validateSubmissionDate,
 } from "../domain/validate.js";
 import type {
   BudgetLine,
@@ -50,6 +56,11 @@ function assertOk(message: string | null): void {
   if (message) throw new Error(message);
 }
 
+function withNewId<T extends object>(input: T): T & { id: string } {
+  const { id: _ignored, ...rest } = input as T & { id?: string };
+  return { ...(rest as T), id: crypto.randomUUID() };
+}
+
 function assertMoney(
   amount: number | null,
   currency: Currency | null,
@@ -60,6 +71,8 @@ function assertMoney(
 }
 
 function assertBudgetLineInput(input: Omit<BudgetLine, "id">, rates: YearRates | undefined): void {
+  assertSpendKindEnum(input.kind);
+  assertCurrencyEnum(input.currency);
   assertMoney(input.amount, input.currency, rates);
 }
 
@@ -67,10 +80,15 @@ function assertPurchaseRequestInput(
   input: Omit<PurchaseRequest, "id">,
   rates: YearRates | undefined,
 ): void {
+  assertCurrencyEnum(input.currency);
+  assertStatusEnum(input.status);
   assertMoney(input.amount, input.currency, rates);
 }
 
 function assertIecInput(input: Omit<Iec, "id">, rates: YearRates | undefined): void {
+  assertSpendKindEnum(input.kind);
+  assertCurrencyEnum(input.currency);
+  assertStatusEnum(input.status);
   assertOk(validateAmount(input.budgetAmount));
   assertOk(validateAmount(input.requestedAmount));
   assertOk(validateCurrency(input.currency, rates));
@@ -80,11 +98,15 @@ function assertPurchaseOrderInput(
   input: Omit<PurchaseOrder, "id">,
   rates: YearRates | undefined,
 ): void {
+  assertSpendKindEnum(input.kind);
+  assertNullableCurrencyEnum(input.currency);
   assertOk(validatePeriod(input.capitalizationStart, input.capitalizationEnd));
   assertMoney(input.contractAmount, input.currency, rates);
 }
 
 function assertInvoiceInput(input: Omit<Invoice, "id">, rates: YearRates | undefined): void {
+  assertCurrencyEnum(input.currency);
+  assertOk(validateSubmissionDate(input.submissionDate));
   assertOk(validateInvoiceDocuments(input.receiptNumber, input.facReference));
   assertMoney(input.amount, input.currency, rates);
 }
@@ -257,6 +279,7 @@ function buildStore(db: Db): Store {
     },
 
     async upsertRates(input) {
+      assertOk(validateRates(input));
       const existing = await db.select().from(yearRates).where(eq(yearRates.year, input.year));
       if (existing[0]) {
         await db
@@ -304,7 +327,7 @@ function buildStore(db: Db): Store {
 
     async createBudgetLine(input) {
       assertBudgetLineInput(input, await ratesForYear(db, input.year));
-      const row = { id: crypto.randomUUID(), ...input };
+      const row = withNewId(input);
       await db.insert(budgetLines).values(row);
       return row;
     },
@@ -330,7 +353,7 @@ function buildStore(db: Db): Store {
     async createPurchaseRequest(input) {
       assertPurchaseRequestInput(input, await ratesForYear(db, input.year));
       await requireBudgetLine(input.budgetLineId);
-      const row = { id: crypto.randomUUID(), ...input };
+      const row = withNewId(input);
       await withFkGuard("write", async () => {
         await db.insert(purchaseRequests).values(row);
       });
@@ -358,7 +381,7 @@ function buildStore(db: Db): Store {
     async createIec(input) {
       assertIecInput(input, await ratesForYear(db, input.year));
       await requirePurchaseRequest(input.purchaseRequestId);
-      const row = { id: crypto.randomUUID(), ...input };
+      const row = withNewId(input);
       await withFkGuard("write", async () => {
         await db.insert(iecs).values(row);
       });
@@ -399,7 +422,7 @@ function buildStore(db: Db): Store {
           ...capFields(input),
         });
       });
-      return { id, ...input };
+      return { ...input, id };
     },
 
     async updatePurchaseOrder(id, input) {
@@ -441,7 +464,7 @@ function buildStore(db: Db): Store {
     async createInvoice(input) {
       const po = await requirePurchaseOrder(input.purchaseOrderId);
       assertInvoiceInput(input, await ratesForYear(db, po.budgetYear));
-      const row = { id: crypto.randomUUID(), ...input };
+      const row = withNewId(input);
       await withFkGuard("write", async () => {
         await db.insert(invoices).values(row);
       });

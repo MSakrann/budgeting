@@ -186,4 +186,92 @@ describe("http", () => {
     expect(linesAfter.status).toBe(200);
     expect(await linesAfter.json()).toEqual([]);
   });
+
+  it("rejects invalid rates year and non-positive rates", async () => {
+    const app = await editorApp();
+    const cookie = await login(app, "editor@orange.com");
+
+    const nanYear = await app.request("/api/rates/abc", {
+      method: "PUT",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ usdToEgp: 1, eurToEgp: 1 }),
+    });
+    expect(nanYear.status).toBe(400);
+
+    const fracYear = await app.request("/api/rates/2026.5", {
+      method: "PUT",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ usdToEgp: 1, eurToEgp: 1 }),
+    });
+    expect(fracYear.status).toBe(400);
+
+    const zero = await app.request("/api/rates/2027", {
+      method: "PUT",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ usdToEgp: 0, eurToEgp: 61 }),
+    });
+    expect(zero.status).toBe(400);
+    expect(await zero.json()).toMatchObject({ error: expect.stringMatching(/USD/i) });
+
+    const nonNumeric = await app.request("/api/rates/2027", {
+      method: "PUT",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({ usdToEgp: "x", eurToEgp: 61 }),
+    });
+    expect(nonNumeric.status).toBe(400);
+  });
+
+  it("rejects GBP currency and bogus status on create", async () => {
+    const app = await editorApp();
+    const cookie = await login(app, "editor@orange.com");
+    const gbp = await app.request("/api/budget-lines", {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({
+        year: 2026, projectTitle: "X", kind: "capex", currency: "GBP", amount: 1,
+      }),
+    });
+    expect(gbp.status).toBe(400);
+    expect(await gbp.json()).toMatchObject({ error: expect.stringMatching(/currency/i) });
+
+    const status = await app.request("/api/purchase-requests", {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({
+        title: "X", year: 2026, amount: 1, currency: "EGP",
+        budgetLineId: null, status: "Nope",
+      }),
+    });
+    expect(status.status).toBe(400);
+    expect(await status.json()).toMatchObject({ error: expect.stringMatching(/status/i) });
+  });
+
+  it("does not persist a client-supplied id on create", async () => {
+    const app = await editorApp();
+    const cookie = await login(app, "editor@orange.com");
+    const planted = "22222222-2222-2222-2222-222222222222";
+    const created = await app.request("/api/budget-lines", {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: JSON.stringify({
+        id: planted,
+        year: 2026, projectTitle: "Owned", kind: "capex", currency: "EGP", amount: 10,
+      }),
+    });
+    expect(created.status).toBe(200);
+    const body = await created.json();
+    expect(body.id).not.toBe(planted);
+  });
+
+  it("returns 400 for malformed JSON bodies", async () => {
+    const app = await editorApp();
+    const cookie = await login(app, "editor@orange.com");
+    const bad = await app.request("/api/budget-lines", {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json" },
+      body: "{not-json",
+    });
+    expect(bad.status).toBe(400);
+    expect(await bad.json()).toMatchObject({ error: expect.stringMatching(/JSON/i) });
+  });
 });

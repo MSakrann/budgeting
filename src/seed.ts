@@ -20,8 +20,10 @@ function isMissingFileError(err: unknown): boolean {
   return false;
 }
 
-async function ensureSeedUser(store: Store, user: SeedUser): Promise<void> {
-  if (!user.email || !user.password || !user.name) return;
+async function ensureSeedUser(store: Store, user: SeedUser, label: string): Promise<void> {
+  if (!user.email || !user.password || !user.name) {
+    throw new Error(`Missing required seed env vars for ${label}`);
+  }
   if ((await store.findUserByEmail(user.email)) !== null) return;
   await store.ensureUser({
     email: user.email,
@@ -41,19 +43,19 @@ export async function seed(
     password: env.EDITOR_ONE_PASSWORD,
     name: env.EDITOR_ONE_NAME,
     role: "editor",
-  });
+  }, "EDITOR_ONE");
   await ensureSeedUser(store, {
     email: env.EDITOR_TWO_EMAIL,
     password: env.EDITOR_TWO_PASSWORD,
     name: env.EDITOR_TWO_NAME,
     role: "editor",
-  });
+  }, "EDITOR_TWO");
   await ensureSeedUser(store, {
     email: env.VIEWER_EMAIL,
     password: env.VIEWER_PASSWORD,
     name: env.VIEWER_NAME,
     role: "viewer",
-  });
+  }, "VIEWER");
 
   const ledger = await store.loadLedger();
   if (!ledger.rates.some((rates) => rates.year === 2026)) {
@@ -67,7 +69,7 @@ export async function seed(
     rows = await readRows();
   } catch (err) {
     if (isMissingFileError(err)) {
-      console.error("Consumption workbook missing; skipping import", err);
+      console.warn("Consumption workbook missing; skipping import");
       return;
     }
     throw err;

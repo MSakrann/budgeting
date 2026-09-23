@@ -10,7 +10,7 @@
     "start": "node dist/server.js"
   },
   "dependencies": {
-    "drizzle-orm": "^0.44.2",
+    "drizzle-orm": "^0.45.3",
     "exceljs": "^4.4.0",
     "hono": "^4.8.3",
     "postgres": "^3.4.7",
