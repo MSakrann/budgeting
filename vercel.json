@@ -3,11 +3,13 @@
   "outputDirectory": "public",
   "framework": null,
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "functions": {
-    "api/index.ts": {
+    "api/session.ts": {
+      "maxDuration": 60
+    },
+    "api/[...route].ts": {
       "maxDuration": 60,
       "includeFiles": "references/**"
     }
