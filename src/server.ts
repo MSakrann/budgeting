@@ -7,6 +7,8 @@ import { createPostgresStore } from "./db/postgres-store.js";
 import { createApp } from "./http/app.js";
 import { requestBodyFromBuffer } from "./http/request-body.js";
 import { createStaticApp } from "./http/static-files.js";
+import { readConsumptionWorkbook } from "./import/read-xlsx.js";
+import { seed } from "./seed.js";
 import { createMemoryStore } from "./store/memory.js";
 import type { Store } from "./store/types.js";
 
@@ -96,6 +98,9 @@ function createRequestHandler(
 
 async function main(): Promise<void> {
   const store = await openStore();
+  const workbookPath =
+    process.env.CONSUMPTION_XLSX ?? "references/Data - List of POs 2026.xlsx";
+  await seed(store, process.env, () => readConsumptionWorkbook(workbookPath));
   const app = createApp(store, sessionSecret);
   const staticApp = createStaticApp(clientDist);
   createServer(createRequestHandler(app, staticApp)).listen(port, () => {
