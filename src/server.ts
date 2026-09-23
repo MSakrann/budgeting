@@ -2,40 +2,12 @@ import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
 import { Readable } from "node:stream";
-import postgres from "postgres";
-import { createPostgresStore } from "./db/postgres-store.js";
-import { createApp } from "./http/app.js";
-import { requestBodyFromBuffer } from "./http/request-body.js";
 import { createStaticApp } from "./http/static-files.js";
-import { readConsumptionWorkbook } from "./import/read-xlsx.js";
-import { seed } from "./seed.js";
-import { createMemoryStore } from "./store/memory.js";
-import type { Store } from "./store/types.js";
+import { requestBodyFromBuffer } from "./http/request-body.js";
+import { bootstrapApp } from "./runtime.js";
 
 const port = Number(process.env.PORT ?? 3000);
 const clientDist = join(process.cwd(), "client", "dist");
-
-function resolveSessionSecret(): string {
-  const secret = process.env.SESSION_SECRET;
-  if (secret) return secret;
-  if (process.env.NODE_ENV === "production") {
-    throw new Error("SESSION_SECRET is required when NODE_ENV is production");
-  }
-  return "dev-session-secret";
-}
-
-const sessionSecret = resolveSessionSecret();
-
-async function openStore(): Promise<Store> {
-  const databaseUrl = process.env.DATABASE_URL;
-  if (databaseUrl) {
-    // createPostgresStore accepts a postgres.js Sql client (or PGlite).
-    const sql = postgres(databaseUrl);
-    return createPostgresStore(sql);
-  }
-  console.warn("DATABASE_URL unset; using in-memory store");
-  return createMemoryStore();
-}
 
 async function readBody(req: IncomingMessage): Promise<Uint8Array | undefined> {
   const chunks: Buffer[] = [];
@@ -47,8 +19,8 @@ async function readBody(req: IncomingMessage): Promise<Uint8Array | undefined> {
 }
 
 function createRequestHandler(
-  app: ReturnType<typeof createApp>,
-  staticApp: ReturnType<typeof createStaticApp>,
+  app: { fetch: (request: Request) => Response | Promise<Response> },
+  staticApp: { fetch: (request: Request) => Response | Promise<Response> },
 ) {
   async function handleFetch(
     req: IncomingMessage,
@@ -97,11 +69,7 @@ function createRequestHandler(
 }
 
 async function main(): Promise<void> {
-  const store = await openStore();
-  const workbookPath =
-    process.env.CONSUMPTION_XLSX ?? "references/Data - List of POs 2026.xlsx";
-  await seed(store, process.env, () => readConsumptionWorkbook(workbookPath));
-  const app = createApp(store, sessionSecret);
+  const app = await bootstrapApp();
   const staticApp = createStaticApp(clientDist);
   createServer(createRequestHandler(app, staticApp)).listen(port, () => {
     console.log(`Listening on http://localhost:${port}`);

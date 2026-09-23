@@ -41,6 +41,15 @@ describe("seed", () => {
     expect(await store.hasImport("consumption-2026")).toBe(false);
   });
 
+  it("skips import when ExcelJS reports File not found", async () => {
+    const store = createMemoryStore();
+    await seed(store, env, async () => {
+      throw new Error("File not found: references/missing.xlsx");
+    });
+    expect(await store.hasImport("consumption-2026")).toBe(false);
+    expect((await store.loadLedger()).invoices).toHaveLength(0);
+  });
+
   it("propagates corrupt workbook and parse errors", async () => {
     const store = createMemoryStore();
     await expect(

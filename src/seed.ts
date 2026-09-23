@@ -15,6 +15,8 @@ function isMissingFileError(err: unknown): boolean {
   if (!err || typeof err !== "object") return false;
   const code = (err as { code?: unknown }).code;
   if (code === "ENOENT") return true;
+  // ExcelJS throws a plain Error with this message (no ENOENT code).
+  if (err instanceof Error && /^File not found:/i.test(err.message)) return true;
   const cause = (err as { cause?: unknown }).cause;
   if (cause && cause !== err) return isMissingFileError(cause);
   return false;
