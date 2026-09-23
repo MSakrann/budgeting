@@ -346,13 +346,22 @@ function emptyValues(fields: FieldConfig[]): Record<string, string> {
 export function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sessionLoadError, setSessionLoadError] = useState<string | null>(null);
   const [page, setPage] = useState<Page>("dashboard");
   const [logoutError, setLogoutError] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
       const result = await api<Session>("/api/session");
-      if (result.ok) setSession(result.data);
+      if (result.ok) {
+        setSession(result.data);
+        setSessionLoadError(null);
+      } else if (result.status === 401) {
+        setSession(null);
+        setSessionLoadError(null);
+      } else {
+        setSessionLoadError(result.error);
+      }
       setLoading(false);
     })();
   }, []);
@@ -370,6 +379,18 @@ export function App() {
 
   if (loading) {
     return <div className="app-shell muted">Loading…</div>;
+  }
+
+  if (sessionLoadError) {
+    return (
+      <div className="app-shell">
+        <div className="card">
+          <h1>Could not load session</h1>
+          <p className="error">{sessionLoadError}</p>
+          <p className="muted">Check your connection or try again later. You are not signed out.</p>
+        </div>
+      </div>
+    );
   }
 
   if (!session) {
